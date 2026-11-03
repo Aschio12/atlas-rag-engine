@@ -166,6 +166,10 @@ class IngestJob(IdMixin, TimestampMixin, Base):
     error: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Queue bookkeeping: a queued job is not picked up before `run_after` (retry backoff), and a
+    # running job whose `locked_until` lease has expired is presumed orphaned by a dead worker.
+    run_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class MessageRole(enum.StrEnum):
