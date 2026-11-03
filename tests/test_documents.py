@@ -290,3 +290,101 @@ async def test_losing_a_duplicate_race_cleans_up_and_returns_409(client, app, sp
     # The loser's original was removed: only the first document's folder remains.
     folder = app.state.blobs.root / space["ws"] / space["col"]
     assert [p.name for p in folder.iterdir()] == [first["id"]]
+
+
+# --- URL ingestion ---------------------------------------------------------------------------
+
+
+def _fake_fetch(data=b"<html><title>FAQ</title><body>Hello</body></html>", **kw):
+    from app.ingest.fetch import Fetched
+
+    async def fetch(url, **_):
+        return Fetched(
+            url=kw.get("url", url),
+            data=data,
+            content_type=kw.get("content_type", "text/html; charset=utf-8"),
+            filename=kw.get("filename", "faq.html"),
+        )
+
+    return fetch
+
+
+async def test_add_document_from_url(client, app, space):
+    app.state.fetch_url = _fake_fetch()
+    r = await client.post(
+        space["url"] + "/url",
+        json={"url": "https://example.com/faq.html"},
+        headers=space["headers"],
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["source_type"] == "url"
+    assert body["source_uri"] == "https://example.com/faq.html"
+    assert body["kind"] == "html"
+    assert body["title"] == "faq"
+
+
+async def test_url_without_a_filename_is_titled_by_host_and_typed_by_content_type(
+    client, app, space
+):
+    app.state.fetch_url = _fake_fetch(filename=None, url="https://example.com/")
+    r = await client.post(
+        space["url"] + "/url", json={"url": "https://example.com/"}, headers=space["headers"]
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["title"] == "example.com"
+    assert r.json()["kind"] == "html"
+
+
+async def test_url_title_override_and_duplicate_detection(client, app, space):
+    app.state.fetch_url = _fake_fetch()
+    payload = {"url": "https://example.com/faq.html", "title": "Company FAQ"}
+    first = await client.post(space["url"] + "/url", json=payload, headers=space["headers"])
+    assert first.json()["title"] == "Company FAQ"
+    again = await client.post(space["url"] + "/url", json=payload, headers=space["headers"])
+    assert again.status_code == 409
+    assert again.json()["existing_document_id"] == first.json()["id"]
+
+
+async def test_blocked_url_is_400_and_unreachable_is_502(client, space):
+    # Uses the real fetcher: the guard refuses before any network access.
+    r = await client.post(
+        space["url"] + "/url",
+        json={"url": "http://169.254.169.254/latest/meta-data/"},
+        headers=space["headers"],
+    )
+    assert r.status_code == 400
+    assert "not allowed" in r.json()["detail"]
+
+
+async def test_remote_failures_are_502(client, app, space):
+    from app.ingest.fetch import FetchError
+
+    async def failing(url, **_):
+        raise FetchError("The remote server answered with HTTP 500")
+
+    app.state.fetch_url = failing
+    r = await client.post(
+        space["url"] + "/url", json={"url": "https://example.com/x"}, headers=space["headers"]
+    )
+    assert r.status_code == 502
+    assert r.json()["type"].endswith("upstream_error")
+
+
+async def test_fetched_binary_is_415(client, app, space):
+    app.state.fetch_url = _fake_fetch(
+        data=b"MZ\x90\x00\x03", content_type="application/octet-stream", filename="setup.exe"
+    )
+    r = await client.post(
+        space["url"] + "/url",
+        json={"url": "https://example.com/setup.exe"},
+        headers=space["headers"],
+    )
+    assert r.status_code == 415
+
+
+async def test_url_endpoint_validates_input_and_requires_member(client, space):
+    r = await client.post(space["url"] + "/url", json={"url": ""}, headers=space["headers"])
+    assert r.status_code == 422
+    r = await client.post(space["url"] + "/url", json={"url": "https://example.com/"})
+    assert r.status_code == 401
