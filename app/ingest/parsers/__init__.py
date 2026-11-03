@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.ingest.files import Kind
 from app.ingest.parsers.base import Heading, PageSpan, ParsedDocument, ParseError, TextBuilder
+from app.ingest.parsers.html import parse_html
 from app.ingest.parsers.plain import parse_csv, parse_markdown, parse_text
 
 __all__ = [
@@ -25,4 +26,6 @@ def parse(data: bytes, kind: Kind) -> ParsedDocument:
             return parse_markdown(data)
         case Kind.CSV:
             return parse_csv(data)
+        case Kind.HTML:
+            return parse_html(data)
     raise ParseError(f"No parser is available for {kind.value} files yet")
