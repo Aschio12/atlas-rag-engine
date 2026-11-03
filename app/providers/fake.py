@@ -109,6 +109,10 @@ class InMemoryVectorStore(VectorStore):
         self._dims[collection] = dimension
         self._data.setdefault(collection, {})
 
+    async def drop_collection(self, collection: str) -> None:
+        self._data.pop(collection, None)
+        self._dims.pop(collection, None)
+
     async def upsert(self, collection: str, points: list[Point]) -> None:
         if collection not in self._data:
             raise KeyError(f"unknown collection {collection!r}")

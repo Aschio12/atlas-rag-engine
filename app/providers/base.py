@@ -92,6 +92,9 @@ class VectorStore(ABC):
     async def upsert(self, collection: str, points: list[Point]) -> None: ...
 
     @abstractmethod
+    async def drop_collection(self, collection: str) -> None: ...
+
+    @abstractmethod
     async def search(
         self,
         collection: str,

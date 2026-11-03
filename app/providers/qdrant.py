@@ -58,6 +58,9 @@ class QdrantStore(VectorStore):
             json={"vectors": {"size": dimension, "distance": "Cosine"}},
         )
 
+    async def drop_collection(self, collection: str) -> None:
+        await self._call("DELETE", f"/collections/{collection}", ok_statuses=(404,))
+
     async def upsert(self, collection: str, points: list[Point]) -> None:
         if not points:
             return
