@@ -10,6 +10,13 @@ from app.ingest.pipeline import PermanentError
 from app.ingest.worker import Worker
 
 
+@pytest.fixture
+def settings(settings, tmp_path):
+    """File-backed SQLite: the in-memory database shares one connection between the background
+    worker and the test, which makes concurrent transactions unreliable."""
+    return settings.model_copy(update={"database_url": f"sqlite+aiosqlite:///{tmp_path}/w.db"})
+
+
 def _file(data=b"Refunds are issued within 14 days."):
     return {"file": ("notes.txt", io.BytesIO(data), "text/plain")}
 
