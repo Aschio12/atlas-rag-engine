@@ -19,6 +19,11 @@ def test_prod_rejects_default_jwt_secret():
         make(app_env="prod")
 
 
+def test_prod_rejects_short_secret():
+    with pytest.raises(ValidationError):
+        make(app_env="prod", jwt_secret="short-but-not-default")
+
+
 def test_prod_accepts_strong_secret():
     assert make(app_env="prod", jwt_secret="x" * 40).app_env == "prod"
 

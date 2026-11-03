@@ -66,8 +66,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate(self) -> "Settings":
-        if self.app_env == "prod" and self.jwt_secret.get_secret_value() in INSECURE_JWT_SECRETS:
-            raise ValueError("JWT_SECRET must be set to a strong value when APP_ENV=prod")
+        secret = self.jwt_secret.get_secret_value()
+        if self.app_env == "prod" and (secret in INSECURE_JWT_SECRETS or len(secret) < 32):
+            raise ValueError("JWT_SECRET must be at least 32 characters when APP_ENV=prod")
         if self.llm_provider == "openai" and not self.openai_api_key.get_secret_value():
             raise ValueError("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
         if self.llm_provider == "anthropic" and not self.anthropic_api_key.get_secret_value():
