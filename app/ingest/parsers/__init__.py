@@ -7,6 +7,7 @@ from app.ingest.parsers.base import Heading, PageSpan, ParsedDocument, ParseErro
 from app.ingest.parsers.docx import parse_docx
 from app.ingest.parsers.html import parse_html
 from app.ingest.parsers.plain import parse_csv, parse_markdown, parse_text
+from app.ingest.parsers.pptx import parse_pptx
 
 __all__ = [
     "Heading",
@@ -31,4 +32,6 @@ def parse(data: bytes, kind: Kind) -> ParsedDocument:
             return parse_html(data)
         case Kind.DOCX:
             return parse_docx(data)
+        case Kind.PPTX:
+            return parse_pptx(data)
     raise ParseError(f"No parser is available for {kind.value} files yet")
