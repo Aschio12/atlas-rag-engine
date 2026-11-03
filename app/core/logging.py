@@ -75,3 +75,6 @@ def setup_logging(settings: Settings) -> None:
     root.setLevel(settings.log_level)
     # We emit our own access log (with request ids); uvicorn's would be a duplicate.
     logging.getLogger("uvicorn.access").disabled = True
+    # httpx logs full request URLs at INFO; outbound provider URLs may carry credentials.
+    for noisy in ("httpx", "httpcore"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
