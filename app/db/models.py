@@ -142,3 +142,85 @@ class Chunk(IdMixin, Base):
     meta: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
 
     document: Mapped[Document] = relationship(back_populates="chunks")
+
+
+class JobState(enum.StrEnum):
+    QUEUED = "queued"
+    PARSING = "parsing"
+    CHUNKING = "chunking"
+    EMBEDDING = "embedding"
+    INDEXING = "indexing"
+    DONE = "done"
+    FAILED = "failed"
+
+
+class IngestJob(IdMixin, TimestampMixin, Base):
+    __tablename__ = "ingest_jobs"
+
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+    )
+    state: Mapped[JobState] = mapped_column(_enum(JobState), default=JobState.QUEUED, index=True)
+    progress: Mapped[int] = mapped_column(Integer, default=0)  # 0-100
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class MessageRole(enum.StrEnum):
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
+
+
+class Conversation(IdMixin, TimestampMixin, Base):
+    __tablename__ = "conversations"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(200), default="New conversation")
+
+    messages: Mapped[list["Message"]] = relationship(
+        back_populates="conversation", cascade="all, delete-orphan", order_by="Message.created_at"
+    )
+
+
+class Message(IdMixin, TimestampMixin, Base):
+    __tablename__ = "messages"
+
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), index=True
+    )
+    role: Mapped[MessageRole] = mapped_column(_enum(MessageRole))
+    content: Mapped[str] = mapped_column(Text)
+    citations: Mapped[list] = mapped_column(JSON, default=list)
+    # Per-stage scores and reasons, rendered by the Retrieval Inspector (Phase 3.8).
+    retrieval_trace: Mapped[dict | None] = mapped_column(JSON)
+    # Tokens, latency per stage and cost (Phase 6.8).
+    usage: Mapped[dict | None] = mapped_column(JSON)
+    feedback: Mapped[int | None] = mapped_column(Integer)  # -1, 0, +1
+
+    conversation: Mapped[Conversation] = relationship(back_populates="messages")
+
+
+class EvalStatus(enum.StrEnum):
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class EvalRun(IdMixin, TimestampMixin, Base):
+    __tablename__ = "eval_runs"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    suite: Mapped[str] = mapped_column(String(120), index=True)
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    metrics: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[EvalStatus] = mapped_column(_enum(EvalStatus), default=EvalStatus.RUNNING)
