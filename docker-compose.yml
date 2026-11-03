@@ -1,0 +1,27 @@
+services:
+  api:
+    build: .
+    env_file: .env
+    ports: ["8000:8000"]
+    depends_on: [postgres, qdrant, redis]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: atlas
+      POSTGRES_PASSWORD: atlas
+      POSTGRES_DB: atlas
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U atlas"]
+      interval: 5s
+      retries: 10
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports: ["6333:6333"]
+    volumes: [qdrant:/qdrant/storage]
+  redis:
+    image: redis:7-alpine
+volumes:
+  pgdata:
+  qdrant:
