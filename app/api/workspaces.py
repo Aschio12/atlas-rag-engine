@@ -16,9 +16,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import AdminAccess, CurrentUser, OwnerAccess, ViewerAccess
-from app.core.deps import SessionDep
+from app.core.deps import BlobsDep, SessionDep
 from app.core.errors import Conflict
 from app.db.models import Role, Workspace, WorkspaceMember
+from app.ingest import keys
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 
@@ -150,8 +151,10 @@ async def update_workspace(body: WorkspaceUpdate, access: AdminAccess, session: 
 
 
 @router.delete("/{workspace_id}", status_code=204)
-async def delete_workspace(access: OwnerAccess, session: SessionDep) -> Response:
-    """Delete a workspace and everything in it (owner only)."""
+async def delete_workspace(access: OwnerAccess, session: SessionDep, blobs: BlobsDep) -> Response:
+    """Delete a workspace and everything in it, including stored files (owner only)."""
+    prefix = keys.workspace_prefix(access.workspace.id)
     await session.delete(access.workspace)
     await session.commit()
+    await blobs.delete_prefix(prefix)
     return Response(status_code=204)

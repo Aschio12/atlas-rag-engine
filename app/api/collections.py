@@ -13,9 +13,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import AdminAccess, MemberAccess, ViewerAccess
-from app.core.deps import SessionDep, SettingsDep
+from app.core.deps import BlobsDep, SessionDep, SettingsDep
 from app.core.errors import Conflict, NotFound
 from app.db.models import ChunkingStrategy, Collection, Document
+from app.ingest import keys
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/collections", tags=["collections"])
 
@@ -199,13 +200,15 @@ async def update_collection(
 
 @router.delete("/{collection_id}", status_code=204)
 async def delete_collection(
-    collection_id: uuid.UUID, access: AdminAccess, session: SessionDep
+    collection_id: uuid.UUID, access: AdminAccess, session: SessionDep, blobs: BlobsDep
 ) -> Response:
-    """Delete a collection and its documents and chunks (admin or owner).
+    """Delete a collection, its documents, chunks and stored files (admin or owner).
 
-    Vector-index cleanup is added with ingestion (Phase 2.8), when vectors first exist.
+    Vector-index cleanup is added with indexing (Phase 2.6/2.8), when vectors first exist.
     """
     collection, _ = await _get(session, access.workspace.id, collection_id)
+    prefix = keys.collection_prefix(collection.workspace_id, collection.id)
     await session.delete(collection)
     await session.commit()
+    await blobs.delete_prefix(prefix)  # after the commit: orphaned files are harmless
     return Response(status_code=204)
