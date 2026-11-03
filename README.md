@@ -15,7 +15,7 @@ Eval   -> Golden sets, RAGAS-style metrics, regression gate in CI
 
 ## Roadmap
 1. Foundation: config, Docker, database, providers, auth, errors/logging, CRUD (done)
-2. Ingestion and chunking
+2. Ingestion and chunking (upload, queue and parsers done; chunking, enrichment and indexing next)
 3. Hybrid retrieval and reranking
 4. Grounded generation with citations
 5. Agentic RAG and graph retrieval
