@@ -167,4 +167,4 @@ def test_csv_header_only_is_an_error():
 
 def test_kinds_without_a_parser_yet_fail_cleanly():
     with pytest.raises(ParseError, match="No parser"):
-        parse(b"x", Kind.PPTX)
+        parse(b"x", Kind.PDF)
