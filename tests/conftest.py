@@ -35,3 +35,19 @@ async def app(settings):
 async def client(app):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
+
+
+@pytest.fixture
+def signup(client):
+    """Create a user and return Authorization headers for them."""
+
+    async def _signup(email: str = "ada@example.com", password: str = "correct-horse-9", **extra):
+        r = await client.post(
+            "/v1/auth/register", json={"email": email, "password": password, **extra}
+        )
+        assert r.status_code == 201, r.text
+        r = await client.post("/v1/auth/login", json={"email": email, "password": password})
+        assert r.status_code == 200, r.text
+        return {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+    return _signup
