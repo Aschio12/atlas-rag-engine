@@ -155,26 +155,22 @@ async def create_document(
     extra_meta: dict[str, Any] | None = None,
 ) -> Document:
     """Validate, deduplicate, store the original and insert the document row."""
+    # Plain values up front: a rollback expires ORM objects and async sessions cannot lazy-load.
+    collection_id, workspace_id = collection.id, collection.workspace_id
     try:
         kind = detect_kind(data, filename, content_type)
     except UnsupportedFile as e:
         raise UnsupportedMedia(str(e)) from None
 
     content_hash = sha256_hex(data)
-    existing = (
-        await session.execute(
-            select(Document.id, Document.title).where(
-                Document.collection_id == collection.id, Document.content_hash == content_hash
-            )
-        )
-    ).first()
+    existing = await _find_by_hash(session, collection_id, content_hash)
     if existing is not None:
         raise _duplicate(existing.id, existing.title)
 
     safe_name = sanitize_filename(filename) if filename else None
     doc = Document(
         id=uuid.uuid4(),
-        collection_id=collection.id,
+        collection_id=collection_id,
         title=(title or "").strip() or title_from_filename(safe_name or "Untitled"),
         source_type=source_type,
         source_uri=source_uri,
@@ -188,30 +184,34 @@ async def create_document(
             **(extra_meta or {}),
         },
     )
-    key = keys.original_key(collection.workspace_id, collection.id, doc.id)
-    await blobs.put(key, data)
+    folder = keys.document_prefix(workspace_id, collection_id, doc.id)
+    await blobs.put(keys.original_key(workspace_id, collection_id, doc.id), data)
     session.add(doc)
     try:
         await session.commit()
     except IntegrityError:
         # Lost a race with an identical upload: the unique (collection, hash) constraint held.
         await session.rollback()
-        await blobs.delete(key)
-        row = (
-            await session.execute(
-                select(Document.id, Document.title).where(
-                    Document.collection_id == collection.id, Document.content_hash == content_hash
-                )
-            )
-        ).first()
+        await blobs.delete_prefix(folder)
+        row = await _find_by_hash(session, collection_id, content_hash)
         if row is None:
             raise
         raise _duplicate(row.id, row.title) from None
     except BaseException:
-        await blobs.delete(key)
+        await blobs.delete_prefix(folder)
         raise
     await session.refresh(doc)
     return doc
+
+
+async def _find_by_hash(session: AsyncSession, collection_id: uuid.UUID, content_hash: str):
+    return (
+        await session.execute(
+            select(Document.id, Document.title).where(
+                Document.collection_id == collection_id, Document.content_hash == content_hash
+            )
+        )
+    ).first()
 
 
 def _duplicate(existing_id: uuid.UUID, title: str) -> Conflict:
