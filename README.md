@@ -2,7 +2,7 @@
 
 Backend of **Atlas**, a multi-workspace RAG platform: hybrid retrieval (BM25 + dense + RRF), cross-encoder reranking, a knowledge graph layer, agentic query planning, citation-grounded answers, and a built-in evaluation harness.
 
-> **Status:** early development. Done: typed configuration, app factory, Docker Compose stack, database models and migration (1.1-1.4), pluggable model/vector-store providers (1.5). Next: auth and CRUD APIs (1.6-1.8), then ingestion. Retrieval, agents and evaluation described below are planned, not built.
+> **Status:** early development. Done: typed configuration, app factory, Docker Compose stack, database models and migration (1.1-1.4), pluggable providers (1.5), JWT auth with workspace roles (1.6), structured logging and Problem+JSON errors (1.7), workspace and collection CRUD (1.8). Phase 1 is complete; next is ingestion (Phase 2), then ingestion. Retrieval, agents and evaluation described below are planned, not built.
 
 ## Planned architecture
 
@@ -14,7 +14,7 @@ Eval   -> Golden sets, RAGAS-style metrics, regression gate in CI
 ```
 
 ## Roadmap
-1. Foundation: config, layout, Docker, database models (done); providers, auth, CRUD (in progress)
+1. Foundation: config, Docker, database, providers, auth, errors/logging, CRUD (done)
 2. Ingestion and chunking
 3. Hybrid retrieval and reranking
 4. Grounded generation with citations
@@ -41,16 +41,34 @@ pytest
 ## Try it in your browser (no models, no Docker)
 
 ```bash
-LLM_PROVIDER=fake EMBED_PROVIDER=fake VECTOR_STORE=memory uvicorn app.main:app --reload
+export DATABASE_URL=sqlite+aiosqlite:///./atlas-dev.db
+alembic upgrade head      # creates the local SQLite database
+LLM_PROVIDER=fake EMBED_PROVIDER=fake VECTOR_STORE=memory LOG_FORMAT=console \
+  uvicorn app.main:app --reload
 ```
 
-Open <http://localhost:8000/docs> and try:
+Open <http://localhost:8000/docs> (Swagger UI, a testing page for the API, not the product UI) and:
 
-1. `GET /v1/providers`: shows the configured LLM, embedder and vector store (never keys).
-2. `POST /v1/providers/playground/chat`: send `{"prompt": "Say hello"}`; the fake LLM echoes it back.
-3. `POST /v1/providers/playground/similarity`: use the pre-filled example. The document about vector databases ranks first for "how do I search by meaning?".
+1. **Register**: `POST /v1/auth/register` with the pre-filled example.
+2. **Login**: `POST /v1/auth/login` with the same email and password. Copy the `access_token`.
+3. **Authorize**: click the green **Authorize** button at the top, paste the token, confirm. Protected endpoints now work.
+4. **Workspace**: `POST /v1/workspaces` with `{"name": "Acme Support"}`. Copy its `id`.
+5. **Collection**: `POST /v1/workspaces/{workspace_id}/collections` with the workspace id and `{"name": "Product manuals"}`; then `GET` the same path to list it.
+6. **Providers**: `POST /v1/providers/playground/chat` and `/similarity` check the model wiring (fake providers echo and rank by shared words).
 
-The fake providers are deterministic stand-ins for wiring checks (the fake embedder is word-hash based, not semantic). For real models set `LLM_PROVIDER=ollama` (default) with Ollama running, or `openai` / `anthropic` with an API key; see `.env.example`. The playground endpoints return 404 when `APP_ENV=prod`.
+Errors come back as `application/problem+json` and every response carries an `X-Request-ID` header that also appears in the server log. Try a wrong password (401), a duplicate email (409) or a blank name (422).
+
+The fake providers are deterministic stand-ins for wiring checks. For real models set `LLM_PROVIDER=ollama` (default) with Ollama running, or `openai` / `anthropic` with an API key; see `.env.example`. Playground endpoints return 404 when `APP_ENV=prod`.
+
+## API (Phase 1)
+
+| Area | Endpoints | Access |
+|---|---|---|
+| Auth | `POST /v1/auth/register`, `POST /v1/auth/login`, `GET /v1/auth/me` | public / token |
+| Workspaces | `POST,GET /v1/workspaces`, `GET,PATCH,DELETE /v1/workspaces/{id}` | any user / viewer / admin / owner |
+| Collections | `POST,GET /v1/workspaces/{id}/collections`, `GET,PATCH,DELETE .../{collection_id}` | member (write), viewer (read), admin (delete) |
+
+Roles are `viewer < member < admin < owner`. Non-members receive 404, never 403, so workspace ids cannot be probed.
 
 ## Providers
 
