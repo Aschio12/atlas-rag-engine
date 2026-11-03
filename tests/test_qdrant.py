@@ -104,3 +104,14 @@ async def test_api_key_header_only_when_configured():
     assert seen["h"]["api-key"] == "qk"
     await store(handler).search("c", [1.0])
     assert "api-key" not in seen["h"]
+
+
+async def test_drop_collection_tolerates_missing():
+    seen = {}
+
+    def handler(req):
+        seen["m"], seen["p"] = req.method, req.url.path
+        return httpx.Response(404, json={})
+
+    await store(handler).drop_collection("c")
+    assert (seen["m"], seen["p"]) == ("DELETE", "/collections/c")

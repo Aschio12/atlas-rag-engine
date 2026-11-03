@@ -65,3 +65,11 @@ async def test_fake_reranker_orders_by_overlap_and_limits():
         "python web framework", ["cooking pasta", "python web framework fastapi"], 1
     )
     assert [x.index for x in out] == [1]
+
+
+async def test_drop_collection_removes_data():
+    store = InMemoryVectorStore()
+    await store.ensure_collection("c", 2)
+    await store.drop_collection("c")
+    with pytest.raises(KeyError):
+        await store.search("c", [1, 0])
