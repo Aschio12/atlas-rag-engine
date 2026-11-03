@@ -9,6 +9,7 @@ from app.core.logging import setup_logging
 from app.core.middleware import RequestContextMiddleware
 from app.db.session import make_engine, make_sessionmaker
 from app.providers.registry import Providers
+from app.storage import LocalBlobStore
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -27,6 +28,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.providers = providers
     app.state.engine = engine
+    app.state.blobs = LocalBlobStore(settings.storage_dir)
     app.state.sessionmaker = make_sessionmaker(engine)
 
     app.add_middleware(RequestContextMiddleware)

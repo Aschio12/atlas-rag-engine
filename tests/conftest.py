@@ -9,7 +9,7 @@ from app.main import create_app
 
 
 @pytest.fixture
-def settings() -> Settings:
+def settings(tmp_path) -> Settings:
     return Settings(
         _env_file=None,
         app_env="test",
@@ -19,6 +19,8 @@ def settings() -> Settings:
         vector_store="memory",
         jwt_secret="t" * 40,
         log_level="WARNING",
+        storage_dir=str(tmp_path / "blobs"),
+        worker_enabled=False,
     )
 
 

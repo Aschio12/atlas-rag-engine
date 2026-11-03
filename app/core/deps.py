@@ -7,6 +7,7 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.storage import BlobStore
 
 
 def settings_dep(request: Request) -> Settings:
@@ -28,3 +29,10 @@ async def session_dep(request: Request) -> AsyncIterator[AsyncSession]:
 
 
 SessionDep = Annotated[AsyncSession, Depends(session_dep)]
+
+
+def blobs_dep(request: Request) -> BlobStore:
+    return request.app.state.blobs
+
+
+BlobsDep = Annotated[BlobStore, Depends(blobs_dep)]

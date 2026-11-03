@@ -33,10 +33,17 @@ class AppError(Exception):
     code: str = "internal_error"
     title: str = "Internal error"
 
-    def __init__(self, detail: str | None = None, *, headers: dict[str, str] | None = None):
+    def __init__(
+        self,
+        detail: str | None = None,
+        *,
+        headers: dict[str, str] | None = None,
+        extra: dict[str, Any] | None = None,
+    ):
         super().__init__(detail or self.title)
         self.detail = detail or self.title
         self.headers = headers or {}
+        self.extra = extra or {}  # extension members of the problem document
 
 
 class BadRequest(AppError):
@@ -60,6 +67,14 @@ class NotFound(AppError):
 
 class Conflict(AppError):
     status, code, title = 409, "conflict", "Conflict"
+
+
+class PayloadTooLarge(AppError):
+    status, code, title = 413, "payload_too_large", "Payload too large"
+
+
+class UnsupportedMedia(AppError):
+    status, code, title = 415, "unsupported_media_type", "Unsupported media type"
 
 
 def request_id_of(request: Request) -> str | None:
@@ -110,6 +125,7 @@ def install_error_handlers(app: FastAPI) -> None:
             title=exc.title,
             detail=exc.detail,
             headers=exc.headers,
+            **exc.extra,
         )
 
     @app.exception_handler(RequestValidationError)
