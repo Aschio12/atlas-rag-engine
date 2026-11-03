@@ -388,3 +388,43 @@ async def test_url_endpoint_validates_input_and_requires_member(client, space):
     assert r.status_code == 422
     r = await client.post(space["url"] + "/url", json={"url": "https://example.com/"})
     assert r.status_code == 401
+
+
+# --- cleanup on cascade ----------------------------------------------------------------------
+
+
+async def test_deleting_a_collection_removes_its_files(client, app, space):
+    await client.post(space["url"], files=_file(), headers=space["headers"])
+    folder = app.state.blobs.root / space["ws"] / space["col"]
+    assert folder.exists()
+    r = await client.delete(
+        f"/v1/workspaces/{space['ws']}/collections/{space['col']}", headers=space["headers"]
+    )
+    assert r.status_code == 204
+    assert not folder.exists()
+
+
+async def test_deleting_a_workspace_removes_all_its_files(client, app, space):
+    await client.post(space["url"], files=_file(), headers=space["headers"])
+    folder = app.state.blobs.root / space["ws"]
+    assert folder.exists()
+    r = await client.delete(f"/v1/workspaces/{space['ws']}", headers=space["headers"])
+    assert r.status_code == 204
+    assert not folder.exists()
+
+
+async def test_deleting_one_collection_keeps_another_collections_files(client, app, space):
+    other = (
+        await client.post(
+            f"/v1/workspaces/{space['ws']}/collections",
+            json={"name": "Keep me"},
+            headers=space["headers"],
+        )
+    ).json()
+    keep_url = BASE.format(ws=space["ws"], col=other["id"])
+    await client.post(keep_url, files=_file(), headers=space["headers"])
+    await client.post(space["url"], files=_file("b.txt", b"other"), headers=space["headers"])
+    await client.delete(
+        f"/v1/workspaces/{space['ws']}/collections/{space['col']}", headers=space["headers"]
+    )
+    assert (app.state.blobs.root / space["ws"] / other["id"]).exists()
