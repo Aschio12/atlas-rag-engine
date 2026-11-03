@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import Settings
 from app.db.models import Collection, Document, DocumentStatus
 from app.ingest import queue
+from app.ingest.parsers import OcrEngine, default_ocr
 from app.ingest.pipeline import PermanentError, StageContext, StageList, default_stages
 from app.providers.registry import Providers
 from app.storage import BlobStore
@@ -37,6 +38,7 @@ class Worker:
         providers: Providers,
         stages: StageList | None = None,
         lease_s: float = LEASE_S,
+        ocr: OcrEngine | None = None,
     ):
         self.sessionmaker = sessionmaker
         self.settings = settings
@@ -44,9 +46,17 @@ class Worker:
         self.providers = providers
         self.stages = default_stages() if stages is None else stages
         self.lease_s = lease_s
+        self.ocr = ocr if ocr is not None else self._detect_ocr()
         self._task: asyncio.Task | None = None
         self._wake = asyncio.Event()
         self._stopping = False
+
+    def _detect_ocr(self) -> OcrEngine | None:
+        if not self.settings.ocr_enabled:
+            return None
+        engine = default_ocr(self.settings.ocr_language)
+        log.info("OCR for scanned PDFs: %s", "Tesseract" if engine else "not available")
+        return engine
 
     # --- lifecycle ---------------------------------------------------------------------------
 
@@ -162,6 +172,7 @@ class Worker:
                         providers=self.providers,
                         document=document,
                         collection=collection,
+                        ocr=self.ocr,
                     )
                 )
                 await s.commit()

@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.db.models import Collection, Document, JobState
+from app.ingest.parsers import OcrEngine
 from app.providers.registry import Providers
 from app.storage import BlobStore
 
@@ -31,6 +32,7 @@ class StageContext:
     providers: Providers
     document: Document
     collection: Collection
+    ocr: OcrEngine | None = None
 
 
 Stage = Callable[[StageContext], Awaitable[None]]
@@ -39,4 +41,6 @@ StageList = list[tuple[JobState, Stage]]
 
 def default_stages() -> StageList:
     """Stages are appended here as the phases that implement them land."""
-    return []
+    from app.ingest.stages import parse_stage  # local import: stages import this module
+
+    return [(JobState.PARSING, parse_stage)]
