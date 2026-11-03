@@ -6,9 +6,9 @@ import logging
 import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
-from fastapi import APIRouter, File, Form, Query, Response, UploadFile
+from fastapi import APIRouter, File, Form, Query, Request, Response, UploadFile
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -16,9 +16,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import MemberAccess, ViewerAccess
 from app.core.deps import BlobsDep, SessionDep, SettingsDep
-from app.core.errors import Conflict, NotFound, PayloadTooLarge, UnsupportedMedia
+from app.core.errors import (
+    BadRequest,
+    Conflict,
+    NotFound,
+    PayloadTooLarge,
+    UnsupportedMedia,
+    UpstreamError,
+)
 from app.db.models import Collection, Document, DocumentStatus
 from app.ingest import keys
+from app.ingest.fetch import FetchError
 from app.ingest.files import (
     UnsupportedFile,
     detect_kind,
@@ -79,6 +87,11 @@ class TextDocumentCreate(BaseModel):
         if not v.strip():
             raise ValueError("must not be blank")
         return v
+
+
+class UrlDocumentCreate(BaseModel):
+    url: str = Field(min_length=1, max_length=2000, examples=["https://example.com/docs/faq.html"])
+    title: str | None = Field(default=None, max_length=500)
 
 
 def to_out(d: Document) -> DocumentOut:
@@ -269,6 +282,40 @@ async def create_text_document(
         content_type=None,
         source_type="text",
         title=body.title,
+    )
+    return to_out(doc)
+
+
+@router.post("/url", status_code=201, response_model=DocumentOut)
+async def create_url_document(
+    request: Request,
+    collection_id: uuid.UUID,
+    body: UrlDocumentCreate,
+    access: MemberAccess,
+    session: SessionDep,
+    settings: SettingsDep,
+    blobs: BlobsDep,
+):
+    collection = await get_collection(session, access.workspace.id, collection_id)
+    try:
+        fetched = await request.app.state.fetch_url(
+            body.url,
+            max_bytes=settings.max_upload_bytes,
+            timeout_s=settings.url_fetch_timeout_s,
+            allow_private=settings.allow_private_urls,
+        )
+    except FetchError as e:
+        raise (BadRequest if e.blocked else UpstreamError)(str(e)) from None
+    doc = await create_document(
+        session,
+        blobs,
+        collection,
+        data=fetched.data,
+        filename=fetched.filename,
+        content_type=fetched.content_type,
+        source_type="url",
+        source_uri=fetched.url,
+        title=body.title or (None if fetched.filename else urlsplit(fetched.url).hostname),
     )
     return to_out(doc)
 

@@ -73,6 +73,12 @@ class PayloadTooLarge(AppError):
     status, code, title = 413, "payload_too_large", "Payload too large"
 
 
+class UpstreamError(AppError):
+    """A remote system we were asked to contact (e.g. a URL being ingested) failed."""
+
+    status, code, title = 502, "upstream_error", "Upstream request failed"
+
+
 class UnsupportedMedia(AppError):
     status, code, title = 415, "unsupported_media_type", "Unsupported media type"
 
