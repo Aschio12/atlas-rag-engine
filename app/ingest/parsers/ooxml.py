@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import posixpath
 import zipfile
+import zlib
 from xml.etree.ElementTree import Element
 
 from defusedxml import DefusedXmlException
@@ -76,7 +77,16 @@ def read_xml(zf: zipfile.ZipFile, name: str, *, required: bool = True) -> Elemen
         return fromstring(raw, forbid_dtd=True)
     except DefusedXmlException:
         raise ParseError("The file contains disallowed XML (DTD or entities)") from None
-    except (XmlParseError, zipfile.BadZipFile, RuntimeError, OSError):
+    except (
+        XmlParseError,
+        zipfile.BadZipFile,
+        zlib.error,
+        EOFError,
+        NotImplementedError,
+        RuntimeError,
+        OSError,
+        ValueError,
+    ):
         raise ParseError(f"The file is corrupt (cannot read {name})") from None
 
 
