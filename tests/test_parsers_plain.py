@@ -165,6 +165,10 @@ def test_csv_header_only_is_an_error():
 # --- dispatcher ------------------------------------------------------------------------------
 
 
-def test_kinds_without_a_parser_yet_fail_cleanly():
-    with pytest.raises(ParseError, match="No parser"):
-        parse(b"x", Kind.PDF)
+@pytest.mark.parametrize("kind", list(Kind))
+def test_every_kind_has_a_parser(kind):
+    """Garbage input must reach the real parser and fail as a ParseError, never 'No parser'."""
+    try:
+        parse(b"x", kind)
+    except ParseError as e:
+        assert "No parser" not in str(e)
