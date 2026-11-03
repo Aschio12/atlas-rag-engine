@@ -5,11 +5,14 @@ from fastapi import FastAPI
 from app.api import health, v1
 from app.core.config import Settings, get_settings
 from app.core.errors import install_error_handlers
+from app.core.logging import setup_logging
+from app.core.middleware import RequestContextMiddleware
 from app.providers.registry import Providers
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
+    setup_logging(settings)
     providers = Providers(settings)
 
     @asynccontextmanager
@@ -21,6 +24,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.providers = providers
 
+    app.add_middleware(RequestContextMiddleware)
     install_error_handlers(app)
 
     app.include_router(health.router)
