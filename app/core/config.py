@@ -6,7 +6,9 @@ from typing import Literal
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-INSECURE_JWT_SECRETS = {"", "change-me", "secret"}
+# Placeholder secrets: fine for local development, rejected in production.
+INSECURE_JWT_PREFIXES = ("change-me", "dev-only", "secret")
+DEV_JWT_SECRET = "dev-only-insecure-jwt-secret-do-not-use-in-production"
 
 
 class Settings(BaseSettings):
@@ -42,7 +44,7 @@ class Settings(BaseSettings):
     qdrant_api_key: SecretStr = SecretStr("")
 
     # --- auth --------------------------------------------------------------
-    jwt_secret: SecretStr = SecretStr("change-me")
+    jwt_secret: SecretStr = SecretStr(DEV_JWT_SECRET)
     jwt_ttl_minutes: int = Field(default=60 * 24, gt=0)
 
     @property
@@ -67,8 +69,13 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _validate(self) -> "Settings":
         secret = self.jwt_secret.get_secret_value()
-        if self.app_env == "prod" and (secret in INSECURE_JWT_SECRETS or len(secret) < 32):
-            raise ValueError("JWT_SECRET must be at least 32 characters when APP_ENV=prod")
+        if self.app_env == "prod" and (
+            len(secret) < 32 or secret.lower().startswith(INSECURE_JWT_PREFIXES)
+        ):
+            raise ValueError(
+                "JWT_SECRET must be a real secret of at least 32 characters when APP_ENV=prod "
+                "(generate one with: openssl rand -hex 32)"
+            )
         if self.llm_provider == "openai" and not self.openai_api_key.get_secret_value():
             raise ValueError("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
         if self.llm_provider == "anthropic" and not self.anthropic_api_key.get_secret_value():

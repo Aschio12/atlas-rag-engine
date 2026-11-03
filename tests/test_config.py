@@ -24,6 +24,22 @@ def test_prod_rejects_short_secret():
         make(app_env="prod", jwt_secret="short-but-not-default")
 
 
+@pytest.mark.parametrize(
+    "placeholder",
+    [
+        "change-me-generate-one-with-openssl-rand-hex-32",
+        "dev-only-insecure-jwt-secret-do-not-use-in-production",
+    ],
+)
+def test_prod_rejects_long_placeholder_secrets(placeholder):
+    with pytest.raises(ValidationError):
+        make(app_env="prod", jwt_secret=placeholder)
+
+
+def test_dev_default_secret_is_long_enough_for_hs256():
+    assert len(make().jwt_secret.get_secret_value()) >= 32
+
+
 def test_prod_accepts_strong_secret():
     assert make(app_env="prod", jwt_secret="x" * 40).app_env == "prod"
 
