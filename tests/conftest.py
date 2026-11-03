@@ -53,3 +53,24 @@ def signup(client):
         return {"Authorization": f"Bearer {r.json()['access_token']}"}
 
     return _signup
+
+
+DOCS_URL = "/v1/workspaces/{ws}/collections/{col}/documents"
+
+
+@pytest.fixture
+async def space(client, signup):
+    """A signed-in owner with a workspace and one empty collection."""
+    headers = await signup()
+    ws = (await client.post("/v1/workspaces", json={"name": "Acme"}, headers=headers)).json()
+    col = (
+        await client.post(
+            f"/v1/workspaces/{ws['id']}/collections", json={"name": "Manuals"}, headers=headers
+        )
+    ).json()
+    return {
+        "headers": headers,
+        "ws": ws["id"],
+        "col": col["id"],
+        "url": DOCS_URL.format(ws=ws["id"], col=col["id"]),
+    }
