@@ -101,8 +101,10 @@ def normalize(text: str, *, keep_indent: bool = False) -> str:
     for line in text.split("\n"):
         indent = ""
         if keep_indent:
-            indent = line[: len(line) - len(line.lstrip(" \t"))].replace("\t", "    ")
-            line = line.lstrip(" \t")
+            stripped = line.lstrip(" \t")
+            if stripped.strip():
+                indent = line[: len(line) - len(stripped)].replace("\t", "    ")
+            line = stripped
         out.append(indent + _SPACES.sub(" ", line).strip(" "))
     return _BLANK_RUNS.sub("\n\n", "\n".join(out)).strip("\n")
 
