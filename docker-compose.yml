@@ -2,15 +2,28 @@ services:
   api:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://atlas:atlas@postgres:5432/atlas
+      QDRANT_URL: http://qdrant:6333
+      REDIS_URL: redis://redis:6379/0
     ports: ["8000:8000"]
-    depends_on: [postgres, qdrant, redis]
+    depends_on:
+      postgres: { condition: service_healthy }
+      qdrant: { condition: service_started }
+      redis: { condition: service_healthy }
     extra_hosts: ["host.docker.internal:host-gateway"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      retries: 5
+    restart: unless-stopped
   postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: atlas
       POSTGRES_PASSWORD: atlas
       POSTGRES_DB: atlas
+    ports: ["5432:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U atlas"]
@@ -22,6 +35,11 @@ services:
     volumes: [qdrant:/qdrant/storage]
   redis:
     image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
 volumes:
   pgdata:
   qdrant:
