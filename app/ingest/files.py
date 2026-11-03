@@ -99,9 +99,7 @@ def detect_kind(data: bytes, filename: str | None = None, content_type: str | No
         detected = None
 
     if detected is not None:
-        if declared in (Kind.PDF, Kind.DOCX, Kind.PPTX) and declared != detected:
-            raise UnsupportedFile(f"The file contents are {detected.value}, not .{ext}")
-        if declared is not None and declared not in (Kind.PDF, Kind.DOCX, Kind.PPTX):
+        if declared is not None and declared != detected:
             raise UnsupportedFile(f"The file contents are {detected.value}, not .{ext}")
         return detected
 
