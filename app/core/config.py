@@ -25,6 +25,16 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://localhost:6333"
     redis_url: str = "redis://localhost:6379/0"
 
+    # --- documents and ingestion (Phase 2) -----------------------------------
+    storage_dir: str = "./data/blobs"  # originals and parsed text; one folder per workspace
+    max_upload_mb: int = Field(default=25, gt=0, le=500)
+    allow_private_urls: bool = False  # let URL ingestion reach localhost / private networks
+    url_fetch_timeout_s: float = Field(default=15.0, gt=0)
+    worker_enabled: bool = True  # run the ingestion worker inside the API process
+    worker_poll_s: float = Field(default=1.0, gt=0)
+    job_max_attempts: int = Field(default=3, ge=1)
+    job_backoff_s: float = Field(default=2.0, ge=0)  # doubled after every failed attempt
+
     # --- LLM ---------------------------------------------------------------
     # "fake" needs no model or key: handy for first runs, demos and CI.
     llm_provider: Literal["ollama", "openai", "anthropic", "fake"] = "ollama"
@@ -46,6 +56,10 @@ class Settings(BaseSettings):
     # --- auth --------------------------------------------------------------
     jwt_secret: SecretStr = SecretStr(DEV_JWT_SECRET)
     jwt_ttl_minutes: int = Field(default=60 * 24, gt=0)
+
+    @property
+    def max_upload_bytes(self) -> int:
+        return self.max_upload_mb * 1024 * 1024
 
     @property
     def resolved_llm_model(self) -> str:
