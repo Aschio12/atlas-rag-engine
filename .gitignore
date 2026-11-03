@@ -6,6 +6,3 @@ __pycache__/
 data/
 *.egg-info/
 atlas-dev.db
-
-# local blob storage and dev databases
-data/
