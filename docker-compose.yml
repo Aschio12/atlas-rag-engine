@@ -7,6 +7,7 @@ services:
       QDRANT_URL: http://qdrant:6333
       REDIS_URL: redis://redis:6379/0
     ports: ["8000:8000"]
+    volumes: [blobs:/data]
     depends_on:
       postgres: { condition: service_healthy }
       qdrant: { condition: service_started }
@@ -43,3 +44,4 @@ services:
 volumes:
   pgdata:
   qdrant:
+  blobs:
