@@ -14,6 +14,10 @@ class Settings(BaseSettings):
 
     app_env: Literal["dev", "test", "prod"] = "dev"
 
+    # --- logging -----------------------------------------------------------
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    log_format: Literal["json", "console"] = "json"
+
     # --- storage -----------------------------------------------------------
     database_url: str = "postgresql+asyncpg://atlas:atlas@localhost:5432/atlas"
     qdrant_url: str = "http://localhost:6333"
