@@ -24,8 +24,8 @@ from app.core.errors import (
     UnsupportedMedia,
     UpstreamError,
 )
-from app.db.models import Collection, Document, DocumentStatus
-from app.ingest import keys
+from app.db.models import Collection, Document, DocumentStatus, IngestJob, JobState
+from app.ingest import keys, queue
 from app.ingest.fetch import FetchError
 from app.ingest.files import (
     UnsupportedFile,
@@ -47,6 +47,14 @@ MAX_TEXT_CHARS = 5_000_000
 READ_CHUNK = 1024 * 1024
 
 
+class JobBrief(BaseModel):
+    id: uuid.UUID
+    state: JobState
+    progress: int
+    attempts: int
+    error: str | None
+
+
 class DocumentOut(BaseModel):
     id: uuid.UUID
     collection_id: uuid.UUID
@@ -59,6 +67,7 @@ class DocumentOut(BaseModel):
     content_hash: str
     status: DocumentStatus
     metadata: dict[str, Any]
+    job: JobBrief | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -94,7 +103,7 @@ class UrlDocumentCreate(BaseModel):
     title: str | None = Field(default=None, max_length=500)
 
 
-def to_out(d: Document) -> DocumentOut:
+def to_out(d: Document, job: IngestJob | None = None) -> DocumentOut:
     meta = d.meta or {}
     return DocumentOut(
         id=d.id,
@@ -108,6 +117,7 @@ def to_out(d: Document) -> DocumentOut:
         content_hash=d.content_hash,
         status=d.status,
         metadata=meta,
+        job=JobBrief.model_validate(job, from_attributes=True) if job else None,
         created_at=d.created_at,
         updated_at=d.updated_at,
     )
@@ -144,6 +154,26 @@ async def get_document(
     return d
 
 
+async def latest_jobs(
+    session: AsyncSession, document_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, IngestJob]:
+    """The most recent job of each document, in one query."""
+    if not document_ids:
+        return {}
+    rows = (
+        (
+            await session.execute(
+                select(IngestJob)
+                .where(IngestJob.document_id.in_(document_ids))
+                .order_by(IngestJob.created_at, IngestJob.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return {j.document_id: j for j in rows}  # later rows overwrite earlier ones
+
+
 async def read_limited(file: UploadFile, limit: int) -> bytes:
     """Read an upload, refusing to buffer more than `limit` bytes."""
     buf = bytearray()
@@ -166,7 +196,7 @@ async def create_document(
     source_uri: str | None = None,
     title: str | None = None,
     extra_meta: dict[str, Any] | None = None,
-) -> Document:
+) -> tuple[Document, IngestJob]:
     """Validate, deduplicate, store the original and insert the document row."""
     # Plain values up front: a rollback expires ORM objects and async sessions cannot lazy-load.
     collection_id, workspace_id = collection.id, collection.workspace_id
@@ -199,8 +229,10 @@ async def create_document(
     )
     folder = keys.document_prefix(workspace_id, collection_id, doc.id)
     await blobs.put(keys.original_key(workspace_id, collection_id, doc.id), data)
-    session.add(doc)
     try:
+        session.add(doc)
+        await session.flush()  # the document row must exist before its job references it
+        job = await queue.enqueue(session, doc.id)
         await session.commit()
     except IntegrityError:
         # Lost a race with an identical upload: the unique (collection, hash) constraint held.
@@ -214,7 +246,8 @@ async def create_document(
         await blobs.delete_prefix(folder)
         raise
     await session.refresh(doc)
-    return doc
+    await session.refresh(job)
+    return doc, job
 
 
 async def _find_by_hash(session: AsyncSession, collection_id: uuid.UUID, content_hash: str):
@@ -236,6 +269,7 @@ def _duplicate(existing_id: uuid.UUID, title: str) -> Conflict:
 
 @router.post("", status_code=201, response_model=DocumentOut)
 async def upload_document(
+    request: Request,
     collection_id: uuid.UUID,
     access: MemberAccess,
     session: SessionDep,
@@ -246,7 +280,7 @@ async def upload_document(
 ):
     collection = await get_collection(session, access.workspace.id, collection_id)
     data = await read_limited(file, settings.max_upload_bytes)
-    doc = await create_document(
+    doc, job = await create_document(
         session,
         blobs,
         collection,
@@ -256,11 +290,13 @@ async def upload_document(
         source_type="file",
         title=title,
     )
-    return to_out(doc)
+    request.app.state.worker.wake()
+    return to_out(doc, job)
 
 
 @router.post("/text", status_code=201, response_model=DocumentOut)
 async def create_text_document(
+    request: Request,
     collection_id: uuid.UUID,
     body: TextDocumentCreate,
     access: MemberAccess,
@@ -273,7 +309,7 @@ async def create_text_document(
     if len(data) > settings.max_upload_bytes:
         raise PayloadTooLarge(f"The text is larger than the {settings.max_upload_mb} MB limit")
     ext = "md" if body.format == "markdown" else "txt"
-    doc = await create_document(
+    doc, job = await create_document(
         session,
         blobs,
         collection,
@@ -283,7 +319,8 @@ async def create_text_document(
         source_type="text",
         title=body.title,
     )
-    return to_out(doc)
+    request.app.state.worker.wake()
+    return to_out(doc, job)
 
 
 @router.post("/url", status_code=201, response_model=DocumentOut)
@@ -306,7 +343,7 @@ async def create_url_document(
         )
     except FetchError as e:
         raise (BadRequest if e.blocked else UpstreamError)(str(e)) from None
-    doc = await create_document(
+    doc, job = await create_document(
         session,
         blobs,
         collection,
@@ -317,7 +354,8 @@ async def create_url_document(
         source_uri=fetched.url,
         title=body.title or (None if fetched.filename else urlsplit(fetched.url).hostname),
     )
-    return to_out(doc)
+    request.app.state.worker.wake()
+    return to_out(doc, job)
 
 
 @router.get("", response_model=DocumentList)
@@ -349,7 +387,8 @@ async def list_documents(
         .scalars()
         .all()
     )
-    return DocumentList(items=[to_out(d) for d in rows], total=total)
+    jobs = await latest_jobs(session, [d.id for d in rows])
+    return DocumentList(items=[to_out(d, jobs.get(d.id)) for d in rows], total=total)
 
 
 @router.get("/{document_id}", response_model=DocumentOut)
@@ -357,7 +396,8 @@ async def get_document_detail(
     collection_id: uuid.UUID, document_id: uuid.UUID, access: ViewerAccess, session: SessionDep
 ):
     collection = await get_collection(session, access.workspace.id, collection_id)
-    return to_out(await get_document(session, collection, document_id))
+    doc = await get_document(session, collection, document_id)
+    return to_out(doc, (await latest_jobs(session, [doc.id])).get(doc.id))
 
 
 @router.get("/{document_id}/original", response_class=Response)
