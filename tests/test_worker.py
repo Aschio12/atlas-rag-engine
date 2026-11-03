@@ -53,11 +53,11 @@ async def _state(app, doc_id):
 async def test_with_no_stages_the_job_completes_and_the_document_is_ready(
     app, uploaded, make_worker
 ):
-    assert await make_worker().run_once() is True
+    assert await make_worker([]).run_once() is True
     doc, job = await _state(app, uploaded["id"])
     assert (job.state, job.progress) == (JobState.DONE, 100)
     assert doc.status == DocumentStatus.READY
-    assert await make_worker().run_once() is False  # nothing left
+    assert await make_worker([]).run_once() is False  # nothing left
 
 
 async def test_stages_run_in_order_and_report_progress(app, uploaded, make_worker):

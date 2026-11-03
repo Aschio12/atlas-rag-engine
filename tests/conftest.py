@@ -21,6 +21,7 @@ def settings(tmp_path) -> Settings:
         log_level="WARNING",
         storage_dir=str(tmp_path / "blobs"),
         worker_enabled=False,
+        ocr_enabled=False,
     )
 
 

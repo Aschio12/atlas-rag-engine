@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from datetime import datetime
@@ -34,6 +35,7 @@ from app.ingest.files import (
     sha256_hex,
     title_from_filename,
 )
+from app.ingest.parsers import ParsedDocument
 from app.storage import BlobNotFound, BlobStore
 
 log = logging.getLogger("atlas.documents")
@@ -398,6 +400,62 @@ async def get_document_detail(
     collection = await get_collection(session, access.workspace.id, collection_id)
     doc = await get_document(session, collection, document_id)
     return to_out(doc, (await latest_jobs(session, [doc.id])).get(doc.id))
+
+
+class PageOut(BaseModel):
+    page: int
+    char_start: int
+    char_end: int
+
+
+class HeadingOut(BaseModel):
+    level: int
+    text: str
+    char_start: int
+    page: int | None
+
+
+class ParsedOut(BaseModel):
+    title: str | None
+    text: str | None  # omitted with include_text=false
+    characters: int
+    pages: list[PageOut]
+    headings: list[HeadingOut]
+    metadata: dict[str, Any]
+    warnings: list[str]
+
+
+@router.get("/{document_id}/parsed", response_model=ParsedOut)
+async def get_parsed(
+    collection_id: uuid.UUID,
+    document_id: uuid.UUID,
+    access: ViewerAccess,
+    session: SessionDep,
+    blobs: BlobsDep,
+    include_text: bool = True,
+):
+    """The parsed text with its page map and headings: what chunking and citations index into."""
+    collection = await get_collection(session, access.workspace.id, collection_id)
+    doc = await get_document(session, collection, document_id)
+    try:
+        raw = await blobs.get(keys.parsed_key(collection.workspace_id, collection.id, doc.id))
+    except BlobNotFound:
+        raise NotFound("This document has not been parsed yet") from None
+    parsed = ParsedDocument.from_dict(json.loads(raw))
+    return ParsedOut(
+        title=parsed.title,
+        text=parsed.text if include_text else None,
+        characters=len(parsed.text),
+        pages=[
+            PageOut(page=p.page, char_start=p.char_start, char_end=p.char_end) for p in parsed.pages
+        ],
+        headings=[
+            HeadingOut(level=h.level, text=h.text, char_start=h.char_start, page=h.page)
+            for h in parsed.headings
+        ],
+        metadata=parsed.metadata,
+        warnings=parsed.warnings,
+    )
 
 
 @router.get("/{document_id}/original", response_class=Response)
