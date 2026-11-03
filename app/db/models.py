@@ -40,10 +40,10 @@ class Workspace(IdMixin, TimestampMixin, Base):
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
 
     members: Mapped[list["WorkspaceMember"]] = relationship(
-        back_populates="workspace", cascade="all, delete-orphan"
+        back_populates="workspace", cascade="all, delete-orphan", passive_deletes=True
     )
     collections: Mapped[list["Collection"]] = relationship(
-        back_populates="workspace", cascade="all, delete-orphan"
+        back_populates="workspace", cascade="all, delete-orphan", passive_deletes=True
     )
 
 
@@ -93,7 +93,7 @@ class Collection(IdMixin, TimestampMixin, Base):
 
     workspace: Mapped[Workspace] = relationship(back_populates="collections")
     documents: Mapped[list["Document"]] = relationship(
-        back_populates="collection", cascade="all, delete-orphan"
+        back_populates="collection", cascade="all, delete-orphan", passive_deletes=True
     )
 
 
@@ -116,7 +116,7 @@ class Document(IdMixin, TimestampMixin, Base):
 
     collection: Mapped[Collection] = relationship(back_populates="documents")
     chunks: Mapped[list["Chunk"]] = relationship(
-        back_populates="document", cascade="all, delete-orphan"
+        back_populates="document", cascade="all, delete-orphan", passive_deletes=True
     )
 
 
@@ -186,7 +186,10 @@ class Conversation(IdMixin, TimestampMixin, Base):
     title: Mapped[str] = mapped_column(String(200), default="New conversation")
 
     messages: Mapped[list["Message"]] = relationship(
-        back_populates="conversation", cascade="all, delete-orphan", order_by="Message.created_at"
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="Message.created_at",
     )
 
 
