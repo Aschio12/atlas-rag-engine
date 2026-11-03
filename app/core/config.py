@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     worker_enabled: bool = True  # run the ingestion worker inside the API process
     worker_poll_s: float = Field(default=1.0, gt=0)
     job_max_attempts: int = Field(default=3, ge=1)
+    sse_poll_s: float = Field(default=0.5, gt=0)  # how often a job event stream checks for change
     job_backoff_s: float = Field(default=2.0, ge=0)  # doubled after every failed attempt
 
     # --- LLM ---------------------------------------------------------------
