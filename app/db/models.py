@@ -87,6 +87,18 @@ class DocumentStatus(enum.StrEnum):
     FAILED = "failed"
 
 
+class SourceType(enum.StrEnum):
+    WEB = "web"
+    GITHUB = "github"
+
+
+class SourceStatus(enum.StrEnum):
+    IDLE = "idle"  # created or finished with nothing running
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+
+
 class Collection(IdMixin, TimestampMixin, Base):
     __tablename__ = "collections"
     __table_args__ = (UniqueConstraint("workspace_id", "name"),)
@@ -110,6 +122,33 @@ class Collection(IdMixin, TimestampMixin, Base):
     documents: Mapped[list["Document"]] = relationship(
         back_populates="collection", cascade="all, delete-orphan", passive_deletes=True
     )
+    sources: Mapped[list["Source"]] = relationship(
+        back_populates="collection", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class Source(IdMixin, TimestampMixin, Base):
+    """An external place documents are pulled from (a website, a GitHub repository). A sync
+    discovers its items and adds or updates the matching documents (Phase 2.7)."""
+
+    __tablename__ = "sources"
+    __table_args__ = (UniqueConstraint("collection_id", "name"),)
+
+    collection_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("collections.id", ondelete="CASCADE"), index=True
+    )
+    type: Mapped[SourceType] = mapped_column(_enum(SourceType))
+    name: Mapped[str] = mapped_column(String(200))
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[SourceStatus] = mapped_column(_enum(SourceStatus), default=SourceStatus.IDLE)
+    # discovered / created / updated / unchanged / failed counts and the first few errors
+    stats: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    collection: Mapped[Collection] = relationship(back_populates="sources")
 
 
 class Document(IdMixin, TimestampMixin, Base):
@@ -128,6 +167,10 @@ class Document(IdMixin, TimestampMixin, Base):
         _enum(DocumentStatus), default=DocumentStatus.PENDING
     )
     meta: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    # The source that produced this document, if any (kept when the source is deleted).
+    source_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("sources.id", ondelete="SET NULL"), index=True
+    )
 
     collection: Mapped[Collection] = relationship(back_populates="documents")
     chunks: Mapped[list["Chunk"]] = relationship(
