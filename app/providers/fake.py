@@ -16,6 +16,7 @@ from app.providers.base import (
     Reranked,
     Reranker,
     ScoredPoint,
+    SparseVector,
     Usage,
     VectorStore,
 )
@@ -96,22 +97,29 @@ def _matches(payload: dict[str, Any], filters: dict[str, Any] | None) -> bool:
 
 
 class InMemoryVectorStore(VectorStore):
+    """Dense cosine search plus IDF-weighted sparse search, all in process memory."""
+
     name = "memory"
 
     def __init__(self) -> None:
         self._data: dict[str, dict[str, Point]] = {}
         self._dims: dict[str, int] = {}
+        self._sparse: dict[str, bool] = {}
 
-    async def ensure_collection(self, collection: str, dimension: int) -> None:
+    async def ensure_collection(
+        self, collection: str, dimension: int, *, sparse: bool = False
+    ) -> None:
         existing = self._dims.get(collection)
         if existing is not None and existing != dimension:
             raise ValueError(f"collection {collection!r} has dimension {existing}, not {dimension}")
         self._dims[collection] = dimension
+        self._sparse[collection] = self._sparse.get(collection, False) or sparse
         self._data.setdefault(collection, {})
 
     async def drop_collection(self, collection: str) -> None:
         self._data.pop(collection, None)
         self._dims.pop(collection, None)
+        self._sparse.pop(collection, None)
 
     async def upsert(self, collection: str, points: list[Point]) -> None:
         if collection not in self._data:
@@ -119,6 +127,8 @@ class InMemoryVectorStore(VectorStore):
         for p in points:
             if len(p.vector) != self._dims[collection]:
                 raise ValueError("vector dimension mismatch")
+            if p.sparse is not None and not self._sparse[collection]:
+                raise ValueError("collection was created without sparse vectors")
             self._data[collection][p.id] = p
 
     async def search(
@@ -136,18 +146,53 @@ class InMemoryVectorStore(VectorStore):
         hits.sort(key=lambda h: (-h.score, h.id))
         return hits[:limit]
 
+    async def sparse_search(
+        self,
+        collection: str,
+        vector: SparseVector,
+        limit: int = 10,
+        filters: dict[str, Any] | None = None,
+    ) -> list[ScoredPoint]:
+        points = [p for p in self._data[collection].values() if p.sparse is not None]
+        total = len(points)
+        df: dict[int, int] = {}
+        for p in points:
+            for term in set(p.sparse.indices):
+                df[term] = df.get(term, 0) + 1
+        weights = dict(zip(vector.indices, vector.values, strict=True))
+        hits = []
+        for p in points:
+            if not _matches(p.payload, filters):
+                continue
+            score = 0.0
+            for term, value in zip(p.sparse.indices, p.sparse.values, strict=True):
+                if term in weights:
+                    n = df[term]  # the same IDF form Qdrant applies with its idf modifier
+                    score += weights[term] * value * math.log(1 + (total - n + 0.5) / (n + 0.5))
+            if score > 0:
+                hits.append(ScoredPoint(p.id, score, p.payload))
+        hits.sort(key=lambda h: (-h.score, h.id))
+        return hits[:limit]
+
+    async def count(self, collection: str, filters: dict[str, Any] | None = None) -> int:
+        return sum(1 for p in self._data[collection].values() if _matches(p.payload, filters))
+
     async def delete(
         self,
         collection: str,
         *,
         ids: list[str] | None = None,
         filters: dict[str, Any] | None = None,
+        exclude: dict[str, Any] | None = None,
     ) -> None:
         if ids is None and not filters:
             raise ValueError("delete requires ids or filters")
+        if ids is not None and (filters or exclude):
+            raise ValueError("ids cannot be combined with filters or exclude")
         store = self._data[collection]
         for pid in list(store):
-            if (ids is not None and pid in ids) or (
-                filters and _matches(store[pid].payload, filters)
-            ):
+            payload = store[pid].payload
+            selected = pid in ids if ids is not None else _matches(payload, filters)
+            kept = bool(exclude) and any(payload.get(k) == v for k, v in exclude.items())
+            if selected and not kept:
                 del store[pid]

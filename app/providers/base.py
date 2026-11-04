@@ -35,10 +35,23 @@ class LLMResponse:
 
 
 @dataclass(frozen=True)
+class SparseVector:
+    """A bag-of-terms vector: parallel lists of term ids (unsigned 32-bit) and weights."""
+
+    indices: list[int]
+    values: list[float]
+
+    def __post_init__(self) -> None:
+        if len(self.indices) != len(self.values):
+            raise ValueError("indices and values must have the same length")
+
+
+@dataclass(frozen=True)
 class Point:
     id: str
     vector: list[float]
     payload: dict[str, Any] = field(default_factory=dict)
+    sparse: SparseVector | None = None  # lexical (BM25-style) vector, stored beside the dense one
 
 
 @dataclass(frozen=True)
@@ -90,7 +103,11 @@ class VectorStore(ABC):
     name: str
 
     @abstractmethod
-    async def ensure_collection(self, collection: str, dimension: int) -> None: ...
+    async def ensure_collection(
+        self, collection: str, dimension: int, *, sparse: bool = False
+    ) -> None:
+        """Create the collection if missing. With `sparse`, it also holds a sparse vector per
+        point, scored with inverse document frequency (BM25-style) at query time."""
 
     @abstractmethod
     async def upsert(self, collection: str, points: list[Point]) -> None: ...
@@ -109,13 +126,31 @@ class VectorStore(ABC):
         """Cosine-similarity search. `filters` are exact-match payload conditions (AND)."""
 
     @abstractmethod
+    async def sparse_search(
+        self,
+        collection: str,
+        vector: SparseVector,
+        limit: int = 10,
+        filters: dict[str, Any] | None = None,
+    ) -> list[ScoredPoint]:
+        """Lexical search over the sparse vectors (term-overlap score, IDF-weighted)."""
+
+    @abstractmethod
+    async def count(self, collection: str, filters: dict[str, Any] | None = None) -> int:
+        """Number of points matching `filters` (all points when None)."""
+
+    @abstractmethod
     async def delete(
         self,
         collection: str,
         *,
         ids: list[str] | None = None,
         filters: dict[str, Any] | None = None,
-    ) -> None: ...
+        exclude: dict[str, Any] | None = None,
+    ) -> None:
+        """Delete by `ids` or by payload `filters` (not both). With filters, `exclude` spares
+        points whose payload matches any of its key/value pairs, e.g. everything for a document
+        except the current index version."""
 
 
 async def post_json(
