@@ -7,13 +7,11 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field, StringConstraints, model_validator
-from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.auth import ViewerAccess
 from app.core.deps import SessionDep, SettingsDep
-from app.core.errors import BadRequest, NotFound
-from app.db.models import Collection
+from app.core.errors import BadRequest
 from app.retrieve.catalogue import build_catalogue
 from app.retrieve.filters import (
     MAX_CONDITIONS,
@@ -25,6 +23,7 @@ from app.retrieve.history import save_retrieval
 from app.retrieve.options import RetrievalOptions
 from app.retrieve.pipeline import RetrievalPipeline
 from app.retrieve.rerank import RerankUnavailable
+from app.retrieve.scope import resolve_collections
 from app.retrieve.transform import Turn
 from app.retrieve.types import ContextResult, Hit, RetrievalTrace
 
@@ -176,22 +175,6 @@ def _trace_out(t: RetrievalTrace) -> TraceOut:
     return TraceOut(**t.to_dict())
 
 
-async def _collections(
-    session, workspace_id: uuid.UUID, wanted: list[uuid.UUID] | None
-) -> list[Collection]:
-    query = (
-        select(Collection).where(Collection.workspace_id == workspace_id).order_by(Collection.name)
-    )
-    rows = list((await session.execute(query)).scalars())
-    if wanted is None:
-        return rows
-    by_id = {c.id: c for c in rows}
-    chosen = list(dict.fromkeys(wanted))
-    if missing := [i for i in chosen if i not in by_id]:  # also covers other workspaces' ids
-        raise NotFound(f"Collection not found: {missing[0]}")
-    return [by_id[i] for i in chosen]
-
-
 @router.post("/workspaces/{workspace_id}/search", response_model=SearchOut)
 async def search(
     body: SearchRequest,
@@ -203,7 +186,7 @@ async def search(
     """Find the passages that best match a query, across the workspace's collections (or only
     the ones named), narrowed by optional metadata filters. Each hit carries its scores and the
     reasons it was chosen; `trace` shows what every stage did."""
-    collections = await _collections(session, access.workspace.id, body.collection_ids)
+    collections = await resolve_collections(session, access.workspace.id, body.collection_ids)
     pipeline = RetrievalPipeline(session, request.app.state.providers, request.app.state.blobs)
     try:
         result = await pipeline.run(

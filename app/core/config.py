@@ -51,6 +51,18 @@ class Settings(BaseSettings):
     # workspace and older ones are deleted as new ones arrive. 0 turns saving off.
     retrieval_history_limit: int = Field(default=500, ge=0)
 
+    # --- answering (Phase 4) ------------------------------------------------
+    # Below this confidence the assistant says it could not find the answer instead of guessing.
+    # Scores of rerankers and embedding models are not calibrated across providers: tune it.
+    answer_abstain_below: float = Field(default=0.15, ge=0, le=1)
+    answer_prompt_version: int | None = Field(default=None, ge=1)  # None = the latest
+    answer_history_messages: int = Field(default=6, ge=0, le=40)  # recent messages sent verbatim
+    answer_history_tokens: int = Field(default=1500, ge=0)  # ... and at most this many tokens
+    answer_summarize_after: int = Field(
+        default=4, ge=2
+    )  # fold older messages once this many pile up
+    memory_max_facts: int = Field(default=50, ge=0)  # long-term facts per workspace
+
     # --- LLM ---------------------------------------------------------------
     # "fake" needs no model or key: handy for first runs, demos and CI.
     llm_provider: Literal["ollama", "openai", "anthropic", "fake"] = "ollama"
