@@ -2,7 +2,7 @@
 
 Backend of **Atlas**, a multi-workspace RAG platform: hybrid retrieval (BM25 + dense + RRF), cross-encoder reranking, a knowledge graph layer, agentic query planning, citation-grounded answers, and a built-in evaluation harness.
 
-> **Status:** early development. **Phases 1 and 2 are complete**: configuration, Docker stack, database and migrations, pluggable providers, JWT auth with workspace roles, structured logging and Problem+JSON errors, workspace/collection CRUD, and the whole **ingestion pipeline**: upload / text / URL / website / GitHub sources, a durable job queue with live progress, parsers (PDF, DOCX, PPTX, HTML, Markdown, CSV, text, code; OCR fallback), five chunking strategies, enrichment, dense + sparse vector indexing, re-indexing and complete deletion. **Phase 3 (retrieval) has started:** dense search with metadata filters is built (3.1); sparse search, fusion, reranking, query transforms and context assembly come next. Generation, agents and evaluation described below are planned, not built.
+> **Status:** early development. **Phases 1, 2 and 3 are complete**: configuration, Docker stack, database and migrations, pluggable providers, JWT auth with workspace roles, structured logging and Problem+JSON errors, workspace/collection CRUD, the whole **ingestion pipeline** (upload / text / URL / website / GitHub sources, a durable job queue, parsers with OCR fallback, five chunking strategies, enrichment, dense + sparse vector indexing, re-indexing and deletion), and the **retrieval pipeline**: dense, sparse and hybrid search with metadata filters, rank fusion, cross-encoder reranking, query transforms (rewrite, multi-query, HyDE, step-back, decomposition), natural-language filters, context assembly, a saved retrieval trace and a benchmark. Generation, agents and the full evaluation harness described below are planned, not built.
 
 ## Planned architecture
 
@@ -16,7 +16,7 @@ Eval   -> Golden sets, RAGAS-style metrics, regression gate in CI
 ## Roadmap
 1. Foundation: config, Docker, database, providers, auth, errors/logging, CRUD (done)
 2. Ingestion: upload, queue, parsers, chunking, enrichment, indexing, connectors, re-indexing (done)
-3. Hybrid retrieval and reranking (in progress: 3.1 dense search done)
+3. Hybrid retrieval and reranking (done)
 4. Grounded generation with citations
 5. Agentic RAG and graph retrieval
 6. Evaluation and observability
@@ -25,7 +25,7 @@ Companion UI: [atlas-rag-studio](https://github.com/Aschio12/atlas-rag-studio).
 
 ## Data model
 
-`users`, `workspaces`, `workspace_members`, `collections`, `documents`, `chunks` (with character offsets for citation highlighting), `ingest_jobs`, `conversations`, `messages` (citations, retrieval trace, usage), `eval_runs`.
+`users`, `workspaces`, `workspace_members`, `collections`, `documents` (with user-defined attributes), `chunks` (with character offsets for citation highlighting), `ingest_jobs`, `retrievals` (saved searches with their trace), `conversations`, `messages` (citations, retrieval trace, usage), `eval_runs`.
 
 ## Run
 
@@ -67,8 +67,10 @@ Errors come back as `application/problem+json` and every response carries an `X-
 11. **Enrich and index**: every ready document has `metadata.indexing` (points written, vector size, model). `GET .../collections/{collection_id}/index` compares the vector store's point count with what the documents wrote (`in_sync`). Create a collection with `"enrichment": {"summaries": true, "questions": true}` to add LLM summaries and hypothetical questions to each chunk (they show up in `.../chunks`).
 12. **Connect a source**: `POST .../collections/{collection_id}/sources` with `{"type": "web", "config": {"url": "https://example.com/docs/"}}` (reads the sitemap) or `{"type": "github", "config": {"repo": "owner/name"}}`. It returns 202 right away; poll `GET .../sources/{source_id}` for `status` and counters (`created`, `updated`, `unchanged`, `removed`, `failed`). `POST .../sync` runs it again: only changed items are re-ingested and vanished ones are removed.
 13. **Change your mind**: `POST .../collections/{collection_id}/reindex` with a new `chunking_strategy` / `chunking_config` / `enrichment` / `embed_model` rebuilds every document from its stored text (admin only; refused while documents are still processing). `POST .../documents/{document_id}/reindex` rebuilds one.
-14. **Search**: `POST /v1/workspaces/{workspace_id}/search` with `{"query": "how long do refunds take?"}` returns the best passages with their page, heading path, character offsets, scores and the reasons they were chosen, plus a `trace` of each stage. Narrow it with `collection_ids` or `filters` (for example `[{"field": "language", "op": "eq", "value": "en"}, {"field": "created_at", "op": "gte", "value": "2024-01-01"}]`); `GET .../search/fields` lists what can be filtered on.
-15. **Try the guards**: upload the same file again (409 with the existing document id), rename an `.exe` to `.pdf` (415), upload something over the size limit (413), submit `http://169.254.169.254/` as a URL (400, blocked).
+14. **Search**: `POST /v1/workspaces/{workspace_id}/search` with `{"query": "how long do refunds take?"}` returns the best passages (hybrid by default) with their page, heading path, character offsets, scores per stage and the reasons they were chosen, plus a `trace` of every stage. Try `"mode": "dense"` or `"sparse"`, `"top_k": 5`, and `"filters": [{"field": "language", "op": "eq", "value": "en"}]`.
+15. **Tag documents and filter on the tags**: upload with `attributes` (`{"year": 2024, "author": "Chen"}`) or `PATCH .../documents/{id}`, then search with `{"field": "attr.year", "op": "gte", "value": 2023}`. `GET .../search/fields` lists every field and the values that exist. With `"self_query": {"enabled": true}` the question "papers after 2023 about retrieval" can set that filter itself.
+16. **Inspect a search**: every search returns a `retrieval_id`; `GET /v1/workspaces/{workspace_id}/retrievals/{id}` shows the whole trace later.
+17. **Try the guards**: upload the same file again (409 with the existing document id), rename an `.exe` to `.pdf` (415), upload something over the size limit (413), submit `http://169.254.169.254/` as a URL (400, blocked).
 
 The fake providers are deterministic stand-ins for wiring checks. For real models set `LLM_PROVIDER=ollama` (default) with Ollama running, or `openai` / `anthropic` with an API key; see `.env.example`. Playground endpoints return 404 when `APP_ENV=prod`.
 
@@ -79,11 +81,12 @@ The fake providers are deterministic stand-ins for wiring checks. For real model
 | Auth | `POST /v1/auth/register`, `POST /v1/auth/login`, `GET /v1/auth/me` | public / token |
 | Workspaces | `POST,GET /v1/workspaces`, `GET,PATCH,DELETE /v1/workspaces/{id}` | any user / viewer / admin / owner |
 | Collections | `POST,GET /v1/workspaces/{id}/collections`, `GET,PATCH,DELETE .../{collection_id}` | member (write), viewer (read), admin (delete) |
-| Documents | `POST /v1/workspaces/{id}/collections/{cid}/documents` (file), `.../documents/text`, `.../documents/url`; `GET` list / detail / `.../parsed` / `.../original`; `DELETE` | member (write), viewer (read) |
+| Documents | `POST /v1/workspaces/{id}/collections/{cid}/documents` (file), `.../documents/text`, `.../documents/url`; `GET` list / detail / `.../parsed` / `.../original`; `PATCH` (title, attributes); `DELETE` | member (write), viewer (read) |
 | Chunks | `GET .../documents/{document_id}/chunks`, `POST /v1/workspaces/{id}/chunking/preview` | viewer (read), member (preview) |
 | Sources | `POST,GET .../collections/{cid}/sources`, `GET,DELETE .../sources/{id}`, `POST .../sources/{id}/sync` | member (write), viewer (read) |
 | Index | `GET .../collections/{cid}/index`, `POST .../collections/{cid}/reindex`, `POST .../documents/{did}/reindex` | viewer (status), admin (collection) / member (document) |
 | Search | `POST /v1/workspaces/{id}/search`, `GET /v1/workspaces/{id}/search/fields` | viewer |
+| Saved searches | `GET /v1/workspaces/{id}/retrievals`, `GET,DELETE .../retrievals/{rid}` | own (member), all (admin) |
 | Jobs | `GET /v1/workspaces/{id}/jobs`, `GET .../jobs/{job_id}`, `GET .../jobs/{job_id}/events` (SSE), `POST .../jobs/{job_id}/retry` | viewer (read), member (retry) |
 
 Roles are `viewer < member < admin < owner`. Non-members receive 404, never 403, so workspace ids cannot be probed.
@@ -119,7 +122,7 @@ LLM enrichment has bounded concurrency, strict JSON validation (junk, duplicates
 
 ### Embedding and indexing (2.6)
 
-Each chunk is one vector-store point whose id is the chunk id: a **dense** vector from the collection's own embedding model plus a **sparse** BM25-style vector (term-frequency weights, accent-folded and lightly stemmed; Qdrant supplies inverse document frequency with its `idf` modifier). The payload carries workspace, collection, document, chunk, parent, page, character offsets, heading path, language and title, so retrieval can filter by tenant and cite exactly. Since Phase 3.1 it also carries the document's source type, source id, file type and creation time (Unix seconds); documents indexed before that lack these fields until re-indexed (`POST .../reindex`), and filters on them skip such documents. Hypothetical questions are extra points that lead back to their chunk; parent chunks (parent-child) are stored but not indexed. Text is not duplicated into the vector store: the database stays the source of truth.
+Each chunk is one vector-store point whose id is the chunk id: a **dense** vector from the collection's own embedding model plus a **sparse** BM25-style vector (term-frequency weights, accent-folded and lightly stemmed; Qdrant supplies inverse document frequency with its `idf` modifier). The payload carries workspace, collection, document, chunk, parent, page, character offsets, heading path, language and title, so retrieval can filter by tenant and cite exactly. Since Phase 3 it also carries the document's source type, source id, file type, creation time (Unix seconds) and user-defined attributes; documents indexed before that lack these fields until re-indexed (`POST .../reindex`), and filters on them skip such documents. Hypothetical questions are extra points that lead back to their chunk; parent chunks (parent-child) are stored but not indexed. Text is not duplicated into the vector store: the database stays the source of truth.
 
 Every indexing run has a fresh `index_version`. The index stage verifies the run is complete and only then deletes the document's older points, so a document never disappears from search while it is re-indexed, and a retry cannot duplicate anything.
 
@@ -156,15 +159,80 @@ Which one is best on *your* data is an empirical question: Phase 6 adds an evalu
 
 ## Retrieval (Phase 3)
 
-### Dense search (3.1)
+```
+question ─> [rewrite] ─> [self-query filters] ─> [multi-query / step-back / sub-questions / HyDE]
+        ─> dense search ┐
+        ─> sparse search ├─> resolve against the database ─> fuse (RRF or weighted)
+        (one pair per    ┘        ─> [rerank top 50] ─> top_k hits ─> [assemble context]
+         query variant)                        every stage writes to the trace
+```
 
-`POST /v1/workspaces/{id}/search` embeds the query once per embedding model in play, searches every collection of the workspace (or the `collection_ids` you name) in the vector store, and returns up to `top_k` (1 to 50) passages.
+Everything in brackets is a switch. One request:
+
+```json
+POST /v1/workspaces/{id}/search
+{
+  "query": "recipes after 2023 about spaghetti",
+  "mode": "hybrid", "top_k": 8, "pool": 50,
+  "filters": [{"field": "language", "op": "eq", "value": "en"}],
+  "fusion": {"method": "rrf", "k": 60},
+  "rerank": {"enabled": true, "candidates": 50},
+  "transforms": {"multi_query": true, "hyde": false},
+  "self_query": {"enabled": true},
+  "context": {"enabled": true, "max_tokens": 3000, "neighbors": 1},
+  "history": [{"role": "user", "content": "Show me pasta dishes"}]
+}
+```
+
+Every option has a default that works, so `{"query": "..."}` alone is a hybrid search.
+
+### Dense and sparse search (3.1, 3.2)
+
+The query is embedded once per embedding model in play (each collection fixes its own), and each collection is searched in its vector store: **dense** by cosine similarity, **sparse** by BM25-style term overlap (accent-folded, lightly stemmed, IDF from Qdrant). Sparse hits say which query terms matched.
 
 * **Always scoped.** Workspace and collection filters are added by the server after yours, and the filter language cannot name them. A `collection_ids` entry from another workspace gets the same 404 as one that does not exist. Viewers can search.
-* **Metadata filters** are a list of conditions that must all hold, on an allow-listed set of fields: `document_id`, `source_id`, `source_type`, `file_type`, `language`, `title`, `heading`, `page`, `created_at`. Operators are `eq`, `ne`, `in`, `nin` and, for `page` and `created_at`, `gt`, `gte`, `lt`, `lte`. Codes are lowercased, ids validated, dates parsed (ISO 8601, UTC when no zone is given), and a bare date means the whole day: `lte 2023-12-31` includes the 31st. Redundant or contradictory combinations are a 422 with a readable message instead of a silent guess. They run inside the vector store, so top-k is taken after filtering.
-* **What is served is current.** Passage text comes from the database. A point is used only if its chunk exists in the collection it claims and its `index_version` is the one the document's record says is current, so leftovers of an interrupted or older indexing run never show up, nor hide valid results. Then points are collapsed per chunk: a chunk reached through one of its generated questions is returned once, with `matched: "question"` and the question that matched.
-* **Explained.** Each hit has `scores` per stage (`{"dense": 0.83}`) and `reasons`; `trace.stages` records scope, query embedding, search and resolution with timings and counts (points found, dropped as missing or stale, folded, below `min_score`). When collections use different embedding models the trace says their scores are not comparable; the merged order then follows raw similarity.
-* **Limits.** Candidates are fetched at three times `top_k` (at least 10, at most 200) per collection to survive dropped points, so a search that has to discard most of them can return fewer than `top_k` hits even though more exist. Query text is capped at 2000 characters. The `mode` field only accepts `dense` for now; sparse and hybrid arrive in 3.2 and 3.3.
+* **What is served is current.** Passage text comes from the database. A point is used only if its chunk exists in the collection it claims and its `index_version` is the one the document's record says is current, so leftovers of an interrupted or older indexing run never show up, nor hide valid results. Points are then collapsed per chunk: a chunk reached through one of its generated questions is returned once, with `matched: "question"`.
+* **Limits.** `pool` (10 to 100, default 50) candidates are taken per channel, from at most 2x as many points; a search that has to discard most of them can return fewer than `top_k` hits even though more exist. `min_score` is a cosine threshold and only valid in `dense` mode. Scores of different embedding models, and BM25 scores of different collections, are not comparable; the trace says so and fusion uses ranks.
+
+### Metadata filters (3.1, 3.7)
+
+A list of conditions that must all hold, on `document_id`, `source_id`, `source_type`, `file_type`, `language`, `title`, `heading`, `page`, `created_at`, and on document attributes as `attr.<name>`. Operators: `eq`, `ne`, `in`, `nin`, and `gt`, `gte`, `lt`, `lte` for numbers and dates. Codes are lowercased, ids validated, dates parsed (ISO 8601, UTC without a zone; a bare date means the whole day, so `lte 2023-12-31` includes the 31st). Redundant or contradictory combinations are a 422 with a readable message. Filters run inside the vector store, so top-k is taken after filtering.
+
+**Attributes** are a flat map you attach to a document: text, numbers, booleans or lists of tags (`{"year": 2024, "author": "Chen", "tags": ["rag"]}`), given on upload, text and URL ingestion or edited with `PATCH`, which updates the vector index in place without re-embedding. Store dates as numbers (a year, or Unix seconds) so they can be compared. Documents indexed before attributes and the document fields (source type, file type, creation time) existed lack them in the index until re-indexed (`POST .../reindex`); filters on them skip such documents.
+
+### Fusion (3.3)
+
+Hybrid mode fuses the dense and sparse rankings (and the rankings of every query variant). **Reciprocal Rank Fusion** (default) scores `weight / (k + rank)` per list, needs no score calibration and is hard to skew with one outlier; **weighted** fusion min-max normalises each list and sums with weights. `dense_weight`, `sparse_weight`, `variant_weight` and `k` are tunable. Both are pure functions with known-ranking tests, and ties break deterministically.
+
+### Reranking (3.4)
+
+`rerank.enabled` re-scores the best `rerank.candidates` (default 50; never fewer than `top_k`) with a cross-encoder, which reads the question and passage together and is far more accurate than comparing embeddings. Configure `RERANK_PROVIDER`: `cohere` (the Cohere `/rerank` API, also Jina or any server copying it via `RERANK_BASE_URL`), `llm` (the configured chat model grades passages), `local` (a sentence-transformers cross-encoder, default `BAAI/bge-reranker-base`, needs `pip install .[rerank]`), `fake`, or `none` (default: asking for reranking is then a 400). Scores are cached by (reranker, normalised query, chunk id, passage hash) in a TTL'd LRU, so a repeated or overlapping search only pays for unseen pairs and an edited passage never reuses an old score. If the reranker is down, the search still answers in fused order with a warning.
+
+### Query transforms (3.5)
+
+Each is its own switch because each costs an LLM call: `rewrite` (make a follow-up standalone using `history`), `multi_query` (a few differently worded queries), `hyde` (embed a hypothetical answer; dense only), `step_back` (also search a broader question), `decompose` (search each sub-question). Their rankings are fused with the main query's. The model's output is only ever used as search text (it cannot change filters or scopes), replies are validated strictly, and a failed transform is skipped with a warning.
+
+### Natural-language filters (3.7)
+
+`self_query.enabled` shows the model a catalogue of what really exists in the workspace (built-in fields with their values; every attribute with its type, range and values) plus today's date, and asks for a cleaned query and filters. Nothing is trusted: each condition passes the same validation as yours, invented attributes and values a complete catalogue says do not exist are dropped, conflicts with your explicit filters are resolved in your favour, at most five are kept, and every rejection is reported with its reason. If the inferred filters match nothing, the search is repeated without them (`fallback`, on by default) with a warning.
+
+### Context assembly (3.6)
+
+`context.enabled` turns the best `context.pool` passages into labelled blocks (`S1`, `S2`, ...) within `max_tokens`: near-duplicates are dropped, maximal marginal relevance prefers passages that add something new (`mmr_lambda`), a child chunk becomes its parent section (parent-child collections) or gains `neighbors` chunks either side, and pieces that overlap or sit a blank gap apart are merged into one block that is the exact slice of the stored document text. Blocks are packed greedily into the budget (an expansion that does not fit falls back to the matched chunk), then ordered `edges` (best first and last, the weakest in the middle, where models attend least), `relevance` or `document`. Each block lists the chunks it contains and which of them retrieval returned.
+
+### Trace and history (3.8)
+
+The response's `trace` is a versioned (`schema_version`), self-contained object: the options used, every stage with timings and counts, the best 20 candidates with scores after each ranking stage, reranker movements, dropped and rejected items, and a card (title, page, headings, preview) for every passage mentioned. Each search is saved (`record`, on by default) without passage text; `GET .../retrievals` lists your searches (admins see everyone's), `GET .../retrievals/{id}` returns one with its full trace, and the newest `RETRIEVAL_HISTORY_LIMIT` (500; 0 turns saving off) per workspace are kept. This is what the Retrieval Inspector will show, and what chat messages will attach in Phase 4.
+
+### Benchmark (3.9)
+
+`python -m app.retrieve.bench` indexes a committed corpus (`benchmarks/phase3/corpus`, twelve documents) through the real ingestion pipeline and searches 36 golden questions (keyword, paraphrase, multi-passage; each with the document and phrase that answers it) with dense, sparse, hybrid and hybrid+rerank, reporting recall@k, hit@k, MRR and nDCG. Relevance is judged by evidence phrase, so results stay comparable when you change chunking. `--use-env` benchmarks the providers configured in the environment instead of the fakes.
+
+The committed baseline (`benchmarks/phase3/report.md`) was produced with the **fake providers**, whose embedder is a hashed bag of words and whose reranker is word overlap. It checks the wiring and guards against regressions (a test fails if the numbers move by more than about one question), but says nothing about real embedding models: on it BM25 beats vector search, which would not hold with a real model. Numbers for real models are produced by running the command with `EMBED_PROVIDER` and `RERANK_PROVIDER` set; that comparison was not run here.
+
+### Tests for retrieval
+
+Unit tests with hand-computed expectations (fusion, metrics, MMR, exact merging, filter normalisation), API tests over documents ingested by the real worker (isolation between workspaces, stale and orphaned points, every option and its validation, failure degradation), a regression gate on the benchmark, and Qdrant live tests in CI. Limitations: the Qdrant adapter's newer calls (filters, nested keys, `set_payload`, vector reads) are verified against a real server only in CI; the Cohere-compatible and local cross-encoder rerankers are tested against mocks and an injected model, not against a live service; self-query, rewrite and the other transforms are tested with scripted model replies, not with a real LLM.
 
 ## Providers
 
@@ -172,7 +240,7 @@ Which one is best on *your* data is an empirical question: Phase 6 adds an evalu
 |---|---|
 | `LLM` | Ollama, OpenAI-compatible (OpenAI, vLLM, LM Studio, OpenRouter), Anthropic, fake |
 | `Embedder` | Ollama, OpenAI-compatible, fake |
-| `Reranker` | fake (cross-encoder arrives in Phase 3.4) |
+| `Reranker` | Cohere-compatible API (Cohere, Jina, self-hosted), the configured LLM, local cross-encoder (`pip install .[rerank]`), fake |
 | `VectorStore` | Qdrant (REST), in-memory |
 
 ## License
