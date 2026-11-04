@@ -48,3 +48,7 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.setuptools.packages.find]
 include = ["app*"]
+
+[tool.setuptools.package-data]
+# prompt templates are data files inside the package
+"app.generate" = ["templates/*.md"]
