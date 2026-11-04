@@ -264,3 +264,43 @@ def test_backoff_doubles_and_is_capped():
     assert [queue.backoff_seconds(n, 2.0) for n in (1, 2, 3, 4)] == [2.0, 4.0, 8.0, 16.0]
     assert queue.backoff_seconds(40, 2.0) == 3600.0
     assert queue.backoff_seconds(0, 2.0) == 2.0
+
+
+async def test_options_travel_from_enqueue_to_claim(sm, make_doc):
+    async with sm() as s:
+        job = await queue.enqueue(s, await make_doc(), options={"reparse": False})
+        await s.commit()
+    claim = await _claim(sm)
+    assert claim.job_id == job.id
+    assert claim.options == {"reparse": False}
+
+
+async def test_options_default_to_empty(sm, make_doc):
+    await _enqueue(sm, await make_doc())
+    assert (await _claim(sm)).options == {}
+
+
+async def test_set_progress_is_capped_and_only_for_the_owner(sm, make_doc):
+    await _enqueue(sm, await make_doc())
+    c = await _claim(sm)
+    async with sm() as s:
+        assert await queue.set_progress(s, c, 42)
+        await s.commit()
+    assert (await _job(sm, c.job_id)).progress == 42
+    async with sm() as s:
+        await queue.set_progress(s, c, 400)
+        await s.commit()
+    assert (await _job(sm, c.job_id)).progress == 99
+    stale = queue.Claim(c.job_id, c.document_id, c.attempts + 1)
+    async with sm() as s:
+        assert not await queue.set_progress(s, stale, 10)
+
+
+async def test_enriching_counts_as_a_running_state(sm, make_doc):
+    await _enqueue(sm, await make_doc())
+    c = await _claim(sm)
+    async with sm() as s:
+        assert await queue.advance(s, c, JobState.ENRICHING, 50, lease_s=LEASE)
+        await s.commit()
+    assert JobState.ENRICHING in queue.RUNNING_STATES
+    assert await _claim(sm, now=utcnow() + timedelta(seconds=LEASE + 1)) is not None  # reclaimable

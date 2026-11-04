@@ -270,3 +270,25 @@ async def test_loop_survives_unexpected_errors(app, settings, uploaded, make_wor
         assert doc.status == DocumentStatus.READY
     finally:
         await worker.stop()
+
+
+async def test_stages_can_report_progress_and_options_arrive(app, uploaded, make_worker):
+    seen = []
+
+    async def reporting(ctx):
+        seen.append(ctx.options)
+        for fraction in (0.0, 0.5, 1.0):
+            await ctx.progress(fraction)
+            _, job = await _state(app, ctx.document.id)
+            seen.append(job.progress)
+
+    async def second(ctx):
+        _, job = await _state(app, ctx.document.id)
+        seen.append(("second", job.progress))
+
+    async with app.state.sessionmaker() as s:
+        await s.execute(IngestJob.__table__.update().values(options={"reparse": False}))
+        await s.commit()
+    worker = make_worker([(JobState.PARSING, reporting), (JobState.EMBEDDING, second)])
+    await worker.run_once()
+    assert seen == [{"reparse": False}, 0, 25, 50, ("second", 50)]
