@@ -2,6 +2,8 @@
 
 import io
 
+from app.providers.fake import FakeLLM
+
 SMALL = {"target_tokens": 64, "overlap_tokens": 8, "max_tokens": 128}
 PASTA = "Boil salted water, cook the spaghetti for nine minutes and toss with garlic and olive oil"
 REFUND = "Refunds are issued within 14 days of purchase to the original payment method"
@@ -58,3 +60,36 @@ async def build_indexed(client, app, space):
     cid, url = await make_collection(client, space)
     doc_id = await ingest(client, app, space, url)
     return {**space, "cid": cid, "url": url, "doc": doc_id}
+
+
+class ScriptedLLM(FakeLLM):
+    """Answers each kind of query-transform prompt from a table keyed by a phrase of the prompt.
+    A value that is an Exception is raised instead."""
+
+    MARKERS = {
+        "rewrite": "Rewrite the user's latest question",
+        "multi_query": "different search queries",
+        "hyde": "short passage",
+        "step_back": "broader, more general question",
+        "decompose": "sub-questions",
+    }
+
+    def __init__(self, **replies):
+        super().__init__()
+        self.replies = replies
+
+    async def complete(self, messages, **kw):
+        prompt = messages[-1].content
+        for name, marker in self.MARKERS.items():
+            if marker in prompt and name in self.replies:
+                self.calls.append(messages)
+                reply = self.replies[name]
+                if isinstance(reply, Exception):
+                    raise reply
+                return await FakeLLM(reply=reply).complete(messages)
+        raise AssertionError(f"unexpected prompt: {prompt[:80]!r}")
+
+
+def use_llm(app, llm):
+    app.state.providers._llm = llm
+    return llm
