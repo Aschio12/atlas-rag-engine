@@ -17,6 +17,7 @@ from app.core.deps import BlobsDep, SessionDep, SettingsDep
 from app.core.errors import Conflict, NotFound
 from app.db.models import ChunkingStrategy, Collection, Document
 from app.ingest import keys
+from app.ingest.chunking import ChunkingConfig
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/collections", tags=["collections"])
 
@@ -32,6 +33,10 @@ class CollectionCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120, examples=["Product manuals"])
     description: str = Field(default="", max_length=2000)
     chunking_strategy: ChunkingStrategy = ChunkingStrategy.RECURSIVE
+    chunking_config: ChunkingConfig = Field(
+        default_factory=ChunkingConfig,
+        description="Chunk sizes and strategy options. Fixed after creation.",
+    )
     embed_model: str | None = Field(
         default=None,
         max_length=200,
@@ -66,6 +71,7 @@ class CollectionOut(BaseModel):
     name: str
     description: str
     chunking_strategy: ChunkingStrategy
+    chunking_config: ChunkingConfig
     embed_model: str
     document_count: int
     created_at: datetime
@@ -84,6 +90,7 @@ def to_out(c: Collection, document_count: int) -> CollectionOut:
         name=c.name,
         description=c.description,
         chunking_strategy=c.chunking_strategy,
+        chunking_config=ChunkingConfig(**(c.chunking_config or {})),
         embed_model=c.embed_model,
         document_count=document_count,
         created_at=c.created_at,
@@ -136,6 +143,7 @@ async def create_collection(
         name=body.name,
         description=body.description,
         chunking_strategy=body.chunking_strategy,
+        chunking_config=body.chunking_config.model_dump(),
         embed_model=body.embed_model or settings.resolved_embed_model,
     )
     session.add(collection)
