@@ -10,6 +10,7 @@ from app.api import (
     jobs,
     providers,
     reindex,
+    sources,
     workspaces,
 )
 
@@ -22,3 +23,4 @@ router.include_router(documents.router)
 router.include_router(jobs.router)
 router.include_router(chunks.router)
 router.include_router(reindex.router)
+router.include_router(sources.router)
