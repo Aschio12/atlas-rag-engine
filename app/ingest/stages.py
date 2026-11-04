@@ -20,6 +20,16 @@ from app.ingest.enrichment.llm import enrich_with_llm
 from app.ingest.files import Kind, UnsupportedFile, detect_kind
 from app.ingest.parsers import ParsedDocument, ParseError, parse
 from app.ingest.pipeline import PermanentError, StageContext
+from app.ingest.sparse import encode_document
+from app.ingest.vectors import (
+    base_payload,
+    embedding_text,
+    lexical_text,
+    question_point_id,
+    vector_collection,
+)
+from app.providers.base import Point
+from app.providers.errors import ProviderError
 from app.storage import BlobNotFound
 
 log = logging.getLogger("atlas.stages")
@@ -173,3 +183,122 @@ async def enrich_stage(ctx: StageContext) -> None:
         "document enriched",
         extra={"document_id": str(doc.id), **{k: v for k, v in summary.items() if k != "llm"}},
     )
+
+
+async def _searchable_chunks(ctx: StageContext) -> list[Chunk]:
+    rows = (
+        (
+            await ctx.session.execute(
+                select(Chunk).where(Chunk.document_id == ctx.document.id).order_by(Chunk.ordinal)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [c for c in rows if (c.meta or {}).get("kind", "chunk") != "parent"]
+
+
+async def embed_stage(ctx: StageContext) -> None:
+    """Embed every searchable chunk (and each hypothetical question) and write dense + sparse
+    vectors to the vector store, batch by batch.
+
+    All points of one run share a fresh `index_version`. Nothing is deleted here: the indexing
+    stage removes the previous run's points only after the new ones are all in place, so a
+    document never disappears from search while it is being re-indexed. Idempotent: point ids
+    are deterministic, so a retry overwrites instead of duplicating.
+    """
+    doc, col, settings = ctx.document, ctx.collection, ctx.settings
+    chunks = await _searchable_chunks(ctx)
+    embedder = ctx.providers.embedder_for(col.embed_model)
+    store = ctx.providers.vector_store
+    name = vector_collection(col.id)
+    version = uuid.uuid4().hex
+
+    # (point id, payload, text to embed, text for the lexical index)
+    items: list[tuple[str, dict, str, str]] = []
+    for chunk in chunks:
+        payload = base_payload(col, doc, chunk, version)
+        items.append(
+            (
+                str(chunk.id),
+                {**payload, "kind": "chunk"},
+                embedding_text(chunk),
+                lexical_text(chunk),
+            )
+        )
+        for i, question in enumerate((chunk.meta or {}).get("questions", [])):
+            items.append(
+                (
+                    question_point_id(chunk.id, i),
+                    {**payload, "kind": "question", "question": question},
+                    question,
+                    question,
+                )
+            )
+
+    truncated = 0
+    dimension: int | None = None
+    batch = settings.embed_batch_size
+    for start in range(0, len(items), batch):
+        part = items[start : start + batch]
+        texts = []
+        for _, _, text, _ in part:
+            if len(text) > settings.embed_max_chars:
+                text, truncated = text[: settings.embed_max_chars], truncated + 1
+            texts.append(text)
+        vectors = await embedder.embed(texts)
+        if len(vectors) != len(part):
+            raise PermanentError("The embedding model returned the wrong number of vectors")
+        if dimension is None:
+            dimension = len(vectors[0])
+            try:
+                await store.ensure_collection(name, dimension, sparse=True)
+            except ValueError:
+                raise PermanentError(
+                    "The collection's vectors have a different size than the embedding model "
+                    "produces; re-index the collection"
+                ) from None
+        await store.upsert(
+            name,
+            [
+                Point(pid, vec, payload, encode_document(lexical))
+                for (pid, payload, _, lexical), vec in zip(part, vectors, strict=True)
+            ],
+        )
+        await ctx.progress(min(start + batch, len(items)) / len(items))
+
+    doc.meta = {
+        **(doc.meta or {}),
+        "indexing": {
+            "version": version,
+            "points": len(items),
+            "chunks": len(chunks),
+            "questions": len(items) - len(chunks),
+            "dimension": dimension,
+            "model": col.embed_model,
+            "truncated": truncated,
+        },
+    }
+    log.info("document embedded", extra={"document_id": str(doc.id), "points": len(items)})
+
+
+async def index_stage(ctx: StageContext) -> None:
+    """Finish an indexing run: verify that every point of this run is present, then remove the
+    document's points from earlier runs (re-chunking, a changed strategy, edited content)."""
+    doc, col = ctx.document, ctx.collection
+    info = (doc.meta or {}).get("indexing") or {}
+    version = info.get("version")
+    if not version:
+        raise PermanentError("The document was not embedded; re-run it")
+    store = ctx.providers.vector_store
+    name = vector_collection(col.id)
+
+    present = await store.count(name, {"document_id": str(doc.id), "index_version": version})
+    if present != info["points"]:
+        # The store lost writes or is lagging: retry the whole run rather than serve a hole.
+        raise ProviderError(store.name, f"expected {info['points']} points, found {present}")
+    await store.delete(
+        name, filters={"document_id": str(doc.id)}, exclude={"index_version": version}
+    )
+    doc.meta = {**(doc.meta or {}), "indexing": {**info, "verified": present}}
+    log.info("document indexed", extra={"document_id": str(doc.id), "points": present})

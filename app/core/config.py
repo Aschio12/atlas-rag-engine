@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     max_upload_mb: int = Field(default=25, gt=0, le=500)
     allow_private_urls: bool = False  # let URL ingestion reach localhost / private networks
     url_fetch_timeout_s: float = Field(default=15.0, gt=0)
+    embed_batch_size: int = Field(default=32, ge=1, le=512)  # texts per embedding request
+    embed_max_chars: int = Field(default=8000, ge=256)  # longer texts are truncated, and counted
     ocr_enabled: bool = True  # use Tesseract for scanned PDF pages when it is installed
     ocr_language: str = "eng"  # Tesseract language code(s), e.g. "eng+deu"
     worker_enabled: bool = True  # run the ingestion worker inside the API process

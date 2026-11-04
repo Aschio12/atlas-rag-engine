@@ -48,10 +48,18 @@ StageList = list[tuple[JobState, Stage]]
 
 def default_stages() -> StageList:
     """Stages are appended here as the phases that implement them land."""
-    from app.ingest.stages import chunk_stage, enrich_stage, parse_stage  # stages import this
+    from app.ingest.stages import (  # stages import this module
+        chunk_stage,
+        embed_stage,
+        enrich_stage,
+        index_stage,
+        parse_stage,
+    )
 
     return [
         (JobState.PARSING, parse_stage),
         (JobState.CHUNKING, chunk_stage),
         (JobState.ENRICHING, enrich_stage),
+        (JobState.EMBEDDING, embed_stage),
+        (JobState.INDEXING, index_stage),
     ]
