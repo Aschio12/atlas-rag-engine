@@ -2,9 +2,20 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import AsyncIterator
+
 import httpx
 
-from app.providers.base import LLM, ChatMessage, LLMResponse, Usage, post_json
+from app.providers.base import (
+    LLM,
+    ChatMessage,
+    LLMResponse,
+    StreamChunk,
+    Usage,
+    post_json,
+    stream_lines,
+)
 from app.providers.errors import ProviderError
 
 API_VERSION = "2023-06-01"
@@ -25,9 +36,7 @@ class AnthropicLLM(LLM):
         self.base_url = base_url.rstrip("/")
         self._client = client or httpx.AsyncClient(timeout=120)
 
-    async def complete(
-        self, messages: list[ChatMessage], *, temperature: float = 0.2, max_tokens: int = 1024
-    ) -> LLMResponse:
+    def _body(self, messages: list[ChatMessage], temperature: float, max_tokens: int) -> dict:
         # The Messages API takes the system prompt as a separate field.
         system_messages = [m for m in messages if m.role == "system"]
         turns = [{"role": m.role, "content": m.content} for m in messages if m.role != "system"]
@@ -46,6 +55,12 @@ class AnthropicLLM(LLM):
             ]
         elif system_messages:
             body["system"] = "\n\n".join(m.content for m in system_messages)
+        return body
+
+    async def complete(
+        self, messages: list[ChatMessage], *, temperature: float = 0.2, max_tokens: int = 1024
+    ) -> LLMResponse:
+        body = self._body(messages, temperature, max_tokens)
         resp = await post_json(
             self._client,
             self.name,
@@ -69,3 +84,39 @@ class AnthropicLLM(LLM):
                 usage.get("cache_read_input_tokens", 0),
             ),
         )
+
+    async def stream(
+        self, messages: list[ChatMessage], *, temperature: float = 0.2, max_tokens: int = 1024
+    ) -> AsyncIterator[StreamChunk]:
+        body = {**self._body(messages, temperature, max_tokens), "stream": True}
+        prompt = cached = completion = 0
+        async for line in stream_lines(
+            self._client,
+            self.name,
+            f"{self.base_url}/v1/messages",
+            json=body,
+            headers={"x-api-key": self._api_key, "anthropic-version": API_VERSION},
+        ):
+            if not line.startswith("data:"):
+                continue  # `event:` names repeat the type inside the data
+            try:
+                event = json.loads(line[5:])
+            except ValueError as exc:
+                raise ProviderError(self.name, "unexpected stream data") from exc
+            kind = event.get("type")
+            if kind == "message_start":
+                usage = (event.get("message") or {}).get("usage") or {}
+                prompt = usage.get("input_tokens", 0)
+                cached = usage.get("cache_read_input_tokens", 0)
+                completion = usage.get("output_tokens", 0)
+            elif kind == "content_block_delta":
+                delta = event.get("delta") or {}
+                if delta.get("type") == "text_delta" and delta.get("text"):
+                    yield StreamChunk(delta["text"])
+            elif kind == "message_delta":
+                completion = (event.get("usage") or {}).get("output_tokens", completion)
+            elif kind == "error":
+                raise ProviderError(self.name, f"stream error: {str(event.get('error'))[:200]}")
+            elif kind == "message_stop":
+                break
+        yield StreamChunk(usage=Usage(prompt, completion, cached))

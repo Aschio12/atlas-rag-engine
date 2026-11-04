@@ -3,9 +3,21 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import AsyncIterator
+
 import httpx
 
-from app.providers.base import LLM, ChatMessage, Embedder, LLMResponse, Usage, post_json
+from app.providers.base import (
+    LLM,
+    ChatMessage,
+    Embedder,
+    LLMResponse,
+    StreamChunk,
+    Usage,
+    post_json,
+    stream_lines,
+)
 from app.providers.errors import ProviderError
 
 
@@ -60,6 +72,48 @@ class OpenAILLM(LLM):
                 (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0),
             ),
         )
+
+    async def stream(
+        self, messages: list[ChatMessage], *, temperature: float = 0.2, max_tokens: int = 1024
+    ) -> AsyncIterator[StreamChunk]:
+        body = {
+            "model": self.model,
+            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        usage: Usage | None = None
+        async for line in stream_lines(
+            self._client,
+            self.name,
+            f"{self.base_url}/chat/completions",
+            json=body,
+            headers=_headers(self._api_key),
+        ):
+            if not line.startswith("data:"):
+                continue  # blank separators and comments
+            payload = line[5:].strip()
+            if payload == "[DONE]":
+                break
+            try:
+                event = json.loads(payload)
+            except ValueError as exc:
+                raise ProviderError(self.name, "unexpected stream data") from exc
+            if error := event.get("error"):
+                raise ProviderError(self.name, f"stream error: {str(error)[:200]}")
+            if event.get("usage"):
+                u = event["usage"]
+                usage = Usage(
+                    u.get("prompt_tokens", 0),
+                    u.get("completion_tokens", 0),
+                    (u.get("prompt_tokens_details") or {}).get("cached_tokens", 0),
+                )
+            for choice in event.get("choices") or []:
+                if text := (choice.get("delta") or {}).get("content"):
+                    yield StreamChunk(text)
+        yield StreamChunk(usage=usage)
 
 
 class OpenAIEmbedder(Embedder):

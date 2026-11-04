@@ -2,9 +2,21 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import AsyncIterator
+
 import httpx
 
-from app.providers.base import LLM, ChatMessage, Embedder, LLMResponse, Usage, post_json
+from app.providers.base import (
+    LLM,
+    ChatMessage,
+    Embedder,
+    LLMResponse,
+    StreamChunk,
+    Usage,
+    post_json,
+    stream_lines,
+)
 from app.providers.errors import ProviderError
 
 
@@ -35,6 +47,33 @@ class OllamaLLM(LLM):
         return LLMResponse(
             text, self.model, Usage(data.get("prompt_eval_count", 0), data.get("eval_count", 0))
         )
+
+    async def stream(
+        self, messages: list[ChatMessage], *, temperature: float = 0.2, max_tokens: int = 1024
+    ) -> AsyncIterator[StreamChunk]:
+        body = {
+            "model": self.model,
+            "stream": True,
+            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "options": {"temperature": temperature, "num_predict": max_tokens},
+        }
+        usage: Usage | None = None
+        async for line in stream_lines(
+            self._client, self.name, f"{self.base_url}/api/chat", json=body
+        ):
+            if not line.strip():
+                continue
+            try:
+                event = json.loads(line)
+            except ValueError as exc:
+                raise ProviderError(self.name, "unexpected stream data") from exc
+            if error := event.get("error"):
+                raise ProviderError(self.name, f"stream error: {str(error)[:200]}")
+            if text := (event.get("message") or {}).get("content"):
+                yield StreamChunk(text)
+            if event.get("done"):
+                usage = Usage(event.get("prompt_eval_count", 0), event.get("eval_count", 0))
+        yield StreamChunk(usage=usage)
 
 
 class OllamaEmbedder(Embedder):
