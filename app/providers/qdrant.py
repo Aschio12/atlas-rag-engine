@@ -12,20 +12,54 @@ from typing import Any
 
 import httpx
 
-from app.providers.base import Point, ScoredPoint, SparseVector, VectorStore, post_json
+from app.providers.base import (
+    Filters,
+    Point,
+    Range,
+    ScoredPoint,
+    SparseVector,
+    VectorStore,
+    check_filters,
+    post_json,
+)
 from app.providers.errors import ProviderError
 
 DENSE = "dense"
 SPARSE = "sparse"
-INDEXED_FIELDS = ("workspace_id", "collection_id", "document_id", "kind", "chunk_id")
+# Payload fields with an index, and its type. Every query and delete filters on the first group;
+# the rest serve the metadata filters of retrieval (Phase 3.1).
+INDEXED_FIELDS = {
+    "workspace_id": "keyword",
+    "collection_id": "keyword",
+    "document_id": "keyword",
+    "kind": "keyword",
+    "chunk_id": "keyword",
+    "source_id": "keyword",
+    "source_type": "keyword",
+    "file_type": "keyword",
+    "language": "keyword",
+    "heading_path": "keyword",  # an array: matches when any heading in the path does
+    "page": "integer",
+    "created_at": "integer",
+}
 
 
-def _filter(filters: dict[str, Any] | None, exclude: dict[str, Any] | None = None) -> dict | None:
+def _condition(key: str, cond: Any) -> dict[str, Any]:
+    if isinstance(cond, Range):
+        return {"key": key, "range": cond.as_dict()}
+    if isinstance(cond, list):
+        return {"key": key, "match": {"any": cond}}
+    return {"key": key, "match": {"value": cond}}
+
+
+def _filter(filters: Filters | None, exclude: Filters | None = None) -> dict | None:
+    check_filters(filters)
+    check_filters(exclude)
     out: dict[str, Any] = {}
     if filters:
-        out["must"] = [{"key": k, "match": {"value": v}} for k, v in filters.items()]
+        out["must"] = [_condition(k, v) for k, v in filters.items()]
     if exclude:
-        out["must_not"] = [{"key": k, "match": {"value": v}} for k, v in exclude.items()]
+        out["must_not"] = [_condition(k, v) for k, v in exclude.items()]
     return out or None
 
 
@@ -78,17 +112,24 @@ class QdrantStore(VectorStore):
                 raise ProviderError(
                     self.name, f"collection {collection!r} was created without sparse vectors"
                 )
+            # Collections made before a field was indexed get the new index too.
+            have = resp.json()["result"].get("payload_schema") or {}
+            await self._ensure_indexes(collection, skip=set(have))
             return
         body: dict[str, Any] = {"vectors": {DENSE: {"size": dimension, "distance": "Cosine"}}}
         if sparse:
             body["sparse_vectors"] = {SPARSE: {"modifier": "idf"}}
         await self._call("PUT", f"/collections/{collection}", json=body)
-        for field in INDEXED_FIELDS:  # filters on these are used by every query and delete
-            await self._call(
-                "PUT",
-                f"/collections/{collection}/index?wait=true",
-                json={"field_name": field, "field_schema": "keyword"},
-            )
+        await self._ensure_indexes(collection)
+
+    async def _ensure_indexes(self, collection: str, skip: set[str] = frozenset()) -> None:
+        for field, schema in INDEXED_FIELDS.items():
+            if field not in skip:
+                await self._call(
+                    "PUT",
+                    f"/collections/{collection}/index?wait=true",
+                    json={"field_name": field, "field_schema": schema},
+                )
 
     async def drop_collection(self, collection: str) -> None:
         await self._call("DELETE", f"/collections/{collection}", ok_statuses=(404,))
@@ -110,15 +151,21 @@ class QdrantStore(VectorStore):
         }
         await self._call("PUT", f"/collections/{collection}/points?wait=true", json=body)
 
-    async def _query(self, collection: str, name: str, vector: Any, limit: int, filters):
+    async def _query(
+        self, collection: str, name: str, vector: Any, limit: int, filters, exclude
+    ) -> list[ScoredPoint]:
         body: dict[str, Any] = {
             "vector": {"name": name, "vector": vector},
             "limit": limit,
             "with_payload": True,
         }
-        if f := _filter(filters):
+        if f := _filter(filters, exclude):
             body["filter"] = f
-        resp = await self._call("POST", f"/collections/{collection}/points/search", json=body)
+        resp = await self._call(
+            "POST", f"/collections/{collection}/points/search", json=body, ok_statuses=(404,)
+        )
+        if resp.status_code == 404:
+            return []  # nothing has been indexed into this collection yet
         try:
             return [
                 ScoredPoint(str(r["id"]), float(r["score"]), r.get("payload") or {})
@@ -132,21 +179,23 @@ class QdrantStore(VectorStore):
         collection: str,
         vector: list[float],
         limit: int = 10,
-        filters: dict[str, Any] | None = None,
+        filters: Filters | None = None,
+        exclude: Filters | None = None,
     ) -> list[ScoredPoint]:
-        return await self._query(collection, DENSE, vector, limit, filters)
+        return await self._query(collection, DENSE, vector, limit, filters, exclude)
 
     async def sparse_search(
         self,
         collection: str,
         vector: SparseVector,
         limit: int = 10,
-        filters: dict[str, Any] | None = None,
+        filters: Filters | None = None,
+        exclude: Filters | None = None,
     ) -> list[ScoredPoint]:
         sparse = {"indices": vector.indices, "values": vector.values}
-        return await self._query(collection, SPARSE, sparse, limit, filters)
+        return await self._query(collection, SPARSE, sparse, limit, filters, exclude)
 
-    async def count(self, collection: str, filters: dict[str, Any] | None = None) -> int:
+    async def count(self, collection: str, filters: Filters | None = None) -> int:
         body: dict[str, Any] = {"exact": True}
         if f := _filter(filters):
             body["filter"] = f
@@ -165,8 +214,8 @@ class QdrantStore(VectorStore):
         collection: str,
         *,
         ids: list[str] | None = None,
-        filters: dict[str, Any] | None = None,
-        exclude: dict[str, Any] | None = None,
+        filters: Filters | None = None,
+        exclude: Filters | None = None,
     ) -> None:
         if ids is None and not filters:
             raise ValueError("delete requires ids or filters")

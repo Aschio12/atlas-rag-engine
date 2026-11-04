@@ -62,6 +62,51 @@ class ScoredPoint:
 
 
 @dataclass(frozen=True)
+class Range:
+    """A numeric range condition for a payload field. Bounds are optional; at least one is set."""
+
+    gt: float | None = None
+    gte: float | None = None
+    lt: float | None = None
+    lte: float | None = None
+
+    def __post_init__(self) -> None:
+        bounds = [self.gt, self.gte, self.lt, self.lte]
+        if all(b is None for b in bounds):
+            raise ValueError("a range needs at least one bound")
+        if any(isinstance(b, bool) for b in bounds):
+            raise ValueError("range bounds must be numbers")
+
+    def as_dict(self) -> dict[str, float]:
+        return {
+            k: v
+            for k, v in (("gt", self.gt), ("gte", self.gte), ("lt", self.lt), ("lte", self.lte))
+            if v is not None
+        }
+
+
+# A filter maps a payload field to a condition: a scalar means "equals", a non-empty list means
+# "equals any of", a Range means "within bounds". A payload value that is itself a list (e.g.
+# heading_path) matches when any of its elements does. Filters are ANDed together.
+FilterValue = str | int | float | bool | list | Range
+Filters = dict[str, FilterValue]
+
+
+def check_filters(filters: Filters | None) -> None:
+    """Reject conditions no store can evaluate the same way (empty lists, None, mixed ranges)."""
+    for key, cond in (filters or {}).items():
+        if isinstance(cond, Range):
+            continue
+        if isinstance(cond, list):
+            if not cond:
+                raise ValueError(f"filter {key!r}: an any-of list must not be empty")
+            if any(not isinstance(v, str | int) for v in cond):
+                raise ValueError(f"filter {key!r}: any-of values must be strings or integers")
+        elif cond is None or not isinstance(cond, str | int | float | bool):
+            raise ValueError(f"filter {key!r}: unsupported condition {cond!r}")
+
+
+@dataclass(frozen=True)
 class Reranked:
     index: int  # position in the input list
     score: float
@@ -121,9 +166,11 @@ class VectorStore(ABC):
         collection: str,
         vector: list[float],
         limit: int = 10,
-        filters: dict[str, Any] | None = None,
+        filters: Filters | None = None,
+        exclude: Filters | None = None,
     ) -> list[ScoredPoint]:
-        """Cosine-similarity search. `filters` are exact-match payload conditions (AND)."""
+        """Cosine-similarity search. `filters` are payload conditions that must all hold;
+        `exclude` drops points matching any of its conditions."""
 
     @abstractmethod
     async def sparse_search(
@@ -131,12 +178,14 @@ class VectorStore(ABC):
         collection: str,
         vector: SparseVector,
         limit: int = 10,
-        filters: dict[str, Any] | None = None,
+        filters: Filters | None = None,
+        exclude: Filters | None = None,
     ) -> list[ScoredPoint]:
-        """Lexical search over the sparse vectors (term-overlap score, IDF-weighted)."""
+        """Lexical search over the sparse vectors (term-overlap score, IDF-weighted). Filters
+        behave as in `search`."""
 
     @abstractmethod
-    async def count(self, collection: str, filters: dict[str, Any] | None = None) -> int:
+    async def count(self, collection: str, filters: Filters | None = None) -> int:
         """Number of points matching `filters` (all points when None)."""
 
     @abstractmethod
@@ -145,8 +194,8 @@ class VectorStore(ABC):
         collection: str,
         *,
         ids: list[str] | None = None,
-        filters: dict[str, Any] | None = None,
-        exclude: dict[str, Any] | None = None,
+        filters: Filters | None = None,
+        exclude: Filters | None = None,
     ) -> None:
         """Delete by `ids` or by payload `filters` (not both). With filters, `exclude` spares
         points whose payload matches any of its key/value pairs, e.g. everything for a document

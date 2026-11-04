@@ -4,9 +4,9 @@ import uuid
 import httpx
 import pytest
 
-from app.providers.base import Point, SparseVector
+from app.providers.base import Point, Range, SparseVector
 from app.providers.errors import ProviderError
-from app.providers.qdrant import QdrantStore
+from app.providers.qdrant import INDEXED_FIELDS, QdrantStore
 
 ID = str(uuid.uuid4())
 
@@ -38,8 +38,10 @@ async def test_ensure_collection_creates_when_missing():
         {"vectors": {"dense": {"size": 384, "distance": "Cosine"}}},
     )
     indexed = {c[2]["field_name"] for c in calls[2:] if c[1].endswith("/index")}
-    assert indexed == {"workspace_id", "collection_id", "document_id", "kind", "chunk_id"}
-    assert all(c[2]["field_schema"] == "keyword" for c in calls[2:])
+    assert indexed == set(INDEXED_FIELDS)
+    schemas = {c[2]["field_name"]: c[2]["field_schema"] for c in calls[2:]}
+    assert schemas["document_id"] == "keyword" and schemas["language"] == "keyword"
+    assert schemas["page"] == "integer" and schemas["created_at"] == "integer"
 
 
 async def test_ensure_collection_with_sparse_vectors_uses_the_idf_modifier():
@@ -202,3 +204,92 @@ async def test_drop_collection_tolerates_missing():
 
     await store(handler).drop_collection("c")
     assert (seen["m"], seen["p"]) == ("DELETE", "/collections/c")
+
+
+def body_of(req):
+    return json.loads(req.content)
+
+
+async def test_search_translates_any_of_range_and_exclusion_filters():
+    seen = {}
+
+    def handler(req):
+        seen.update(body_of(req))
+        return httpx.Response(200, json={"result": []})
+
+    await store(handler).search(
+        "c",
+        [1.0, 0.0],
+        5,
+        filters={
+            "workspace_id": "w",
+            "language": ["en", "de"],
+            "page": Range(gte=2, lt=9),
+            "heading_path": "Intro",
+        },
+        exclude={"document_id": "d1", "source_type": ["web", "github"]},
+    )
+    assert seen["filter"] == {
+        "must": [
+            {"key": "workspace_id", "match": {"value": "w"}},
+            {"key": "language", "match": {"any": ["en", "de"]}},
+            {"key": "page", "range": {"gte": 2, "lt": 9}},
+            {"key": "heading_path", "match": {"value": "Intro"}},
+        ],
+        "must_not": [
+            {"key": "document_id", "match": {"value": "d1"}},
+            {"key": "source_type", "match": {"any": ["web", "github"]}},
+        ],
+    }
+
+
+async def test_sparse_search_accepts_the_same_filters():
+    seen = {}
+
+    def handler(req):
+        seen.update(body_of(req))
+        return httpx.Response(200, json={"result": []})
+
+    await store(handler).sparse_search(
+        "c",
+        SparseVector([1], [1.0]),
+        5,
+        filters={"page": Range(lte=3)},
+        exclude={"kind": "question"},
+    )
+    assert seen["filter"]["must"] == [{"key": "page", "range": {"lte": 3}}]
+    assert seen["filter"]["must_not"] == [{"key": "kind", "match": {"value": "question"}}]
+
+
+async def test_search_on_a_collection_that_does_not_exist_finds_nothing():
+    s = store(lambda req: httpx.Response(404, json={"status": {"error": "Not found"}}))
+    assert await s.search("c", [1.0], 5) == []
+    assert await s.sparse_search("c", SparseVector([1], [1.0]), 5) == []
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [{"language": []}, {"language": None}, {"language": [1.5]}, {"language": {"a": 1}}],
+)
+async def test_unusable_filter_conditions_are_rejected_before_any_request(bad):
+    def handler(req):
+        raise AssertionError("no request expected")
+
+    with pytest.raises(ValueError):
+        await store(handler).search("c", [1.0], 5, filters=bad)
+
+
+async def test_existing_collections_gain_the_indexes_they_lack():
+    calls = []
+
+    def handler(req):
+        calls.append((req.method, req.url.path))
+        if req.method == "GET":
+            payload = {"workspace_id": {}, "collection_id": {}, "document_id": {}}
+            body = {**info(8, sparse=True)["result"], "payload_schema": payload}
+            return httpx.Response(200, json={"result": body})
+        return httpx.Response(200, json={"result": True})
+
+    await store(handler).ensure_collection("c", 8, sparse=True)
+    created = [path for method, path in calls if method == "PUT"]
+    assert len(created) == len(INDEXED_FIELDS) - 3  # only the ones missing

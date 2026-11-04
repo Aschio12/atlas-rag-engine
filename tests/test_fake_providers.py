@@ -71,8 +71,8 @@ async def test_drop_collection_removes_data():
     store = InMemoryVectorStore()
     await store.ensure_collection("c", 2)
     await store.drop_collection("c")
-    with pytest.raises(KeyError):
-        await store.search("c", [1, 0])
+    assert await store.search("c", [1, 0]) == []  # like Qdrant's 404: nothing to find
+    assert await store.count("c") == 0
 
 
 async def test_sparse_vectors_are_scored_with_idf_so_rare_terms_dominate():

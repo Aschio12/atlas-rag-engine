@@ -11,14 +11,17 @@ from app.providers.base import (
     LLM,
     ChatMessage,
     Embedder,
+    Filters,
     LLMResponse,
     Point,
+    Range,
     Reranked,
     Reranker,
     ScoredPoint,
     SparseVector,
     Usage,
     VectorStore,
+    check_filters,
 )
 
 _TOKEN = re.compile(r"[a-z0-9]+")
@@ -92,8 +95,37 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return dot / (na * nb) if na and nb else 0.0
 
 
-def _matches(payload: dict[str, Any], filters: dict[str, Any] | None) -> bool:
-    return all(payload.get(k) == v for k, v in (filters or {}).items())
+def _one(value: Any, cond: Any) -> bool:
+    """Does one payload value satisfy one condition? (Same rules as the Qdrant adapter.)"""
+    if isinstance(cond, Range):
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            return False
+        return (
+            (cond.gt is None or value > cond.gt)
+            and (cond.gte is None or value >= cond.gte)
+            and (cond.lt is None or value < cond.lt)
+            and (cond.lte is None or value <= cond.lte)
+        )
+    if isinstance(cond, list):
+        return value in cond
+    return value == cond
+
+
+def _satisfies(payload: dict[str, Any], key: str, cond: Any) -> bool:
+    value = payload.get(key)
+    if isinstance(value, list):  # array payloads (heading_path) match on any element
+        return any(_one(v, cond) for v in value)
+    return _one(value, cond)
+
+
+def _matches(payload: dict[str, Any], filters: Filters | None, exclude: Filters | None = None):
+    if filters:
+        check_filters(filters)
+    if exclude:
+        check_filters(exclude)
+    return all(_satisfies(payload, k, v) for k, v in (filters or {}).items()) and not any(
+        _satisfies(payload, k, v) for k, v in (exclude or {}).items()
+    )
 
 
 class InMemoryVectorStore(VectorStore):
@@ -136,12 +168,13 @@ class InMemoryVectorStore(VectorStore):
         collection: str,
         vector: list[float],
         limit: int = 10,
-        filters: dict[str, Any] | None = None,
+        filters: Filters | None = None,
+        exclude: Filters | None = None,
     ) -> list[ScoredPoint]:
         hits = [
             ScoredPoint(p.id, _cosine(vector, p.vector), p.payload)
-            for p in self._data[collection].values()
-            if _matches(p.payload, filters)
+            for p in self._data.get(collection, {}).values()  # a missing collection has no hits
+            if _matches(p.payload, filters, exclude)
         ]
         hits.sort(key=lambda h: (-h.score, h.id))
         return hits[:limit]
@@ -151,9 +184,10 @@ class InMemoryVectorStore(VectorStore):
         collection: str,
         vector: SparseVector,
         limit: int = 10,
-        filters: dict[str, Any] | None = None,
+        filters: Filters | None = None,
+        exclude: Filters | None = None,
     ) -> list[ScoredPoint]:
-        points = [p for p in self._data[collection].values() if p.sparse is not None]
+        points = [p for p in self._data.get(collection, {}).values() if p.sparse is not None]
         total = len(points)
         df: dict[int, int] = {}
         for p in points:
@@ -162,7 +196,7 @@ class InMemoryVectorStore(VectorStore):
         weights = dict(zip(vector.indices, vector.values, strict=True))
         hits = []
         for p in points:
-            if not _matches(p.payload, filters):
+            if not _matches(p.payload, filters, exclude):
                 continue
             score = 0.0
             for term, value in zip(p.sparse.indices, p.sparse.values, strict=True):
@@ -174,7 +208,7 @@ class InMemoryVectorStore(VectorStore):
         hits.sort(key=lambda h: (-h.score, h.id))
         return hits[:limit]
 
-    async def count(self, collection: str, filters: dict[str, Any] | None = None) -> int:
+    async def count(self, collection: str, filters: Filters | None = None) -> int:
         points = self._data.get(collection, {})
         return sum(1 for p in points.values() if _matches(p.payload, filters))
 
@@ -183,8 +217,8 @@ class InMemoryVectorStore(VectorStore):
         collection: str,
         *,
         ids: list[str] | None = None,
-        filters: dict[str, Any] | None = None,
-        exclude: dict[str, Any] | None = None,
+        filters: Filters | None = None,
+        exclude: Filters | None = None,
     ) -> None:
         if ids is None and not filters:
             raise ValueError("delete requires ids or filters")
@@ -195,7 +229,6 @@ class InMemoryVectorStore(VectorStore):
             return  # no such collection: nothing to delete
         for pid in list(store):
             payload = store[pid].payload
-            selected = pid in ids if ids is not None else _matches(payload, filters)
-            kept = bool(exclude) and any(payload.get(k) == v for k, v in exclude.items())
-            if selected and not kept:
+            selected = pid in ids if ids is not None else _matches(payload, filters, exclude)
+            if selected:
                 del store[pid]
