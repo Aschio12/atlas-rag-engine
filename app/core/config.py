@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     url_fetch_timeout_s: float = Field(default=15.0, gt=0)
     embed_batch_size: int = Field(default=32, ge=1, le=512)  # texts per embedding request
     embed_max_chars: int = Field(default=8000, ge=256)  # longer texts are truncated, and counted
+    # --- connectors (Phase 2.7) --------------------------------------------
+    github_token: SecretStr = SecretStr("")  # optional: private repos and a higher rate limit
+    github_api_url: str = "https://api.github.com"
+    github_raw_url: str = "https://raw.githubusercontent.com"
+    source_max_per_collection: int = Field(default=20, ge=1)
+    source_sync_concurrency: int = Field(default=2, ge=1, le=8)
     ocr_enabled: bool = True  # use Tesseract for scanned PDF pages when it is installed
     ocr_language: str = "eng"  # Tesseract language code(s), e.g. "eng+deu"
     worker_enabled: bool = True  # run the ingestion worker inside the API process

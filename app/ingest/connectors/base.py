@@ -28,6 +28,13 @@ class ItemFailure:
 
 
 @dataclass
+class ItemUnchanged:
+    """An item known to be identical to what is already stored (skipped without downloading)."""
+
+    uri: str
+
+
+@dataclass
 class SyncPlan:
     """Reported by a connector once discovery is finished."""
 
@@ -40,5 +47,5 @@ class SyncPlan:
 class Connector(Protocol):
     plan: SyncPlan
 
-    def items(self) -> AsyncIterator[SourceItem | ItemFailure]:
+    def items(self) -> AsyncIterator[SourceItem | ItemFailure | ItemUnchanged]:
         """Yield items one at a time (politely paced). `plan` is filled in as discovery runs."""
