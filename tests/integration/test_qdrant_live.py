@@ -195,3 +195,58 @@ async def test_collections_made_before_a_field_was_indexed_gain_its_index(store)
     assert set(INDEXED_FIELDS) <= set(info.json()["result"]["payload_schema"])
     schema = info.json()["result"]["payload_schema"]
     assert schema["page"]["data_type"] == "integer" and schema["language"]["data_type"] == "keyword"
+
+
+async def test_nested_attribute_keys_can_be_filtered_and_updated_in_place(store):
+    s, name = store
+    emb = FakeEmbedder(dimension=32)
+    await s.ensure_collection(name, 32, sparse=True)
+    vectors = await emb.embed(list(DOCS.values()))
+    attributes = {
+        "refunds": {"year": 2019, "author": "Chen", "tags": ["policy"]},
+        "shipping": {"year": 2024, "author": "Li", "tags": ["ops", "policy"]},
+        "support": {"year": 2022, "author": "Li", "tags": ["ops"]},
+    }
+    await s.upsert(
+        name,
+        [
+            Point(
+                str(uuid.uuid4()), vec,
+                {"key": k, "document_id": f"d-{k}", "attributes": attributes[k]},
+                encode_document(text),
+            )
+            for (k, text), vec in zip(DOCS.items(), vectors, strict=True)
+        ],
+    )  # fmt: skip
+    (q,) = await emb.embed(["anything at all"])
+
+    async def run(**kw):
+        return keys(await s.search(name, q, limit=10, **kw))
+
+    assert await run(filters={"attributes.year": Range(gt=2020)}) == ["shipping", "support"]
+    assert await run(filters={"attributes.author": "Li"}) == ["shipping", "support"]
+    assert await run(filters={"attributes.tags": "policy"}) == ["refunds", "shipping"]
+    assert await run(filters={"attributes.tags": ["ops", "nothing"]}) == ["shipping", "support"]
+    assert await run(exclude={"attributes.author": "Li"}) == ["refunds"]
+
+    # set_payload replaces one document's attributes without touching its vectors
+    await s.set_payload(name, {"attributes": {"year": 2030}}, filters={"document_id": "d-refunds"})
+    assert await run(filters={"attributes.year": Range(gte=2030)}) == ["refunds"]
+    assert await run(filters={"attributes.author": "Chen"}) == []  # replaced as a whole
+    assert await run(filters={"document_id": "d-refunds"}) == ["refunds"]  # other fields kept
+    hits = await s.search(name, q, limit=1, filters={"document_id": "d-refunds"})
+    assert hits[0].payload["key"] == "refunds"
+
+
+async def test_stored_dense_vectors_can_be_read_back_by_id(store):
+    s, name = store
+    emb = FakeEmbedder(dimension=32)
+    await s.ensure_collection(name, 32, sparse=True)
+    (vec,) = await emb.embed(["some text"])
+    point_id = str(uuid.uuid4())
+    await s.upsert(name, [Point(point_id, vec, {"key": "k"}, encode_document("some text"))])
+    got = await s.get_vectors(name, [point_id, str(uuid.uuid4())])
+    assert set(got) == {point_id}
+    assert got[point_id] == pytest.approx(vec, abs=1e-5)
+    assert await s.get_vectors(name, []) == {}
+    assert await s.get_vectors(f"atlas_test_missing_{uuid.uuid4().hex}", [point_id]) == {}
