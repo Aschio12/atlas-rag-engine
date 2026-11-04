@@ -38,7 +38,7 @@ from app.retrieve.transform import (
     apply_expansions,
     apply_rewrite,
 )
-from app.retrieve.types import Hit, RetrievalResult, RetrievalTrace
+from app.retrieve.types import SNAPSHOT_SIZE, Hit, RetrievalResult, RetrievalTrace
 from app.storage import BlobStore
 
 
@@ -112,7 +112,7 @@ class RetrievalPipeline:
         reranker = self._providers.reranker if options.rerank.enabled else None
         if options.rerank.enabled and reranker is None:
             raise RerankUnavailable("Reranking was requested but RERANK_PROVIDER is not set")
-        trace = RetrievalTrace(query)
+        trace = RetrievalTrace(query, options=options.model_dump(mode="json"))
         warnings: list[str] = []
 
         started = time.perf_counter()
@@ -177,7 +177,23 @@ class RetrievalPipeline:
             )
 
         hits = ranked[: options.top_k]
-        trace.add("result", time.perf_counter(), returned=len(hits))
+        for hit in ranked:
+            trace.remember(
+                hit.chunk_id,
+                title=hit.title,
+                page=hit.page,
+                heading_path=hit.heading_path,
+                text=hit.text,
+            )
+        trace.add(
+            "result",
+            time.perf_counter(),
+            returned=len(hits),
+            hits=[
+                {"chunk_id": str(h.chunk_id), "rank": h.rank, "score": h.score, "scores": h.scores}
+                for h in hits
+            ],
+        )
         context = None
         if options.context.enabled:
             started = time.perf_counter()
@@ -333,7 +349,19 @@ class RetrievalPipeline:
                 kept = above
             kept = kept[: options.pool]
             channels.append(Channel(job, kept))
-            per_channel[job.label] = {**stats, "kept": len(kept)}
+            top = []
+            for rank, cand in enumerate(kept[:SNAPSHOT_SIZE], start=1):
+                chunk_id = chunk_id_of(cand.point)
+                _remember(trace, chunk_id, rows)
+                top.append(
+                    {
+                        "chunk_id": str(chunk_id),
+                        "rank": rank,
+                        "score": cand.point.score,
+                        "via": cand.point.payload.get("kind", "chunk"),
+                    }
+                )
+            per_channel[job.label] = {**stats, "kept": len(kept), "top": top}
             for key in totals:
                 totals[key] += stats[key]
         trace.add("resolve", started, channels=per_channel, **totals)
@@ -376,7 +404,19 @@ class RetrievalPipeline:
                 list_sizes={c.label: len(c.candidates) for c in channels},
                 found_by_several_channels=sum(1 for f in fused if len(f.ranks) > 1),
                 fused=len(fused),
+                top=[
+                    {
+                        "chunk_id": str(f.key),
+                        "rank": rank,
+                        "score": f.score,
+                        "ranks": dict(f.ranks),
+                        "contributions": {k: round(v, 6) for k, v in f.contributions.items()},
+                    }
+                    for rank, f in enumerate(fused[:SNAPSHOT_SIZE], start=1)
+                ],
             )
+            for f in fused[:SNAPSHOT_SIZE]:
+                _remember(trace, f.key, rows)
             order = [(f.key, f.score, f) for f in fused]
         else:
             (only,) = channels
@@ -418,6 +458,17 @@ class RetrievalPipeline:
             return hits
         trace.add("rerank", started, **outcome.details)
         return outcome.hits
+
+
+def _remember(trace: RetrievalTrace, chunk_id: uuid.UUID, rows: dict[uuid.UUID, Row]) -> None:
+    chunk, doc = rows[chunk_id]
+    trace.remember(
+        chunk_id,
+        title=doc.title,
+        page=chunk.page,
+        heading_path=(chunk.meta or {}).get("heading_path", []),
+        text=chunk.text,
+    )
 
 
 def _channel_reason(channel: Channel, rank: int, cand: Candidate, chunk) -> str:

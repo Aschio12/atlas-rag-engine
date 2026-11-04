@@ -1,7 +1,9 @@
 """What retrieval returns: ranked hits and a trace of how they were found.
 
-A `Hit` is one passage with the score each stage gave it and the reasons it is here; the trace
-records what every stage did (Phase 3.8 extends it to the whole pipeline for the Inspector).
+A `Hit` is one passage with the score each stage gave it and the reasons it is here. The trace
+records what every stage did, with a snapshot of the best candidates after each ranking stage and
+the details of the passages they refer to, so a UI (the Retrieval Inspector) can replay a search
+without touching the database. `to_dict()` is its stable, versioned, JSON-safe form.
 """
 
 from __future__ import annotations
@@ -35,6 +37,11 @@ class Hit:
     reasons: list[str] = field(default_factory=list)  # why this passage is in the result
 
 
+TRACE_SCHEMA_VERSION = 1
+SNAPSHOT_SIZE = 20  # candidates listed per ranking stage
+PREVIEW_CHARS = 160
+
+
 @dataclass
 class StageTrace:
     name: str
@@ -46,11 +53,46 @@ class StageTrace:
 class RetrievalTrace:
     query: str
     stages: list[StageTrace] = field(default_factory=list)
+    options: dict[str, Any] = field(default_factory=dict)  # the retrieval options used
+    chunks: dict[str, dict[str, Any]] = field(default_factory=dict)  # chunk id -> what to show
+    started: float = field(default_factory=time.perf_counter, repr=False)
 
     def add(self, name: str, started: float, **details: Any) -> StageTrace:
         stage = StageTrace(name, round((time.perf_counter() - started) * 1000, 2), details)
         self.stages.append(stage)
         return stage
+
+    def remember(
+        self,
+        chunk_id: uuid.UUID,
+        *,
+        title: str,
+        page: int | None,
+        heading_path: list[str],
+        text: str,
+    ) -> None:
+        """Keep enough about a passage that the trace can be read on its own."""
+        self.chunks.setdefault(
+            str(chunk_id),
+            {
+                "title": title,
+                "page": page,
+                "heading_path": list(heading_path),
+                "preview": " ".join(text.split())[:PREVIEW_CHARS],
+            },
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": TRACE_SCHEMA_VERSION,
+            "query": self.query,
+            "options": self.options,
+            "total_ms": round((time.perf_counter() - self.started) * 1000, 2),
+            "stages": [
+                {"name": s.name, "took_ms": s.took_ms, "details": s.details} for s in self.stages
+            ],
+            "chunks": self.chunks,
+        }
 
 
 @dataclass
