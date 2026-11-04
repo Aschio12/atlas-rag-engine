@@ -37,9 +37,10 @@ Resolver = Callable[[str, int], Awaitable[list[str]]]
 class FetchError(Exception):
     """The URL cannot be fetched. `blocked` means it was refused by policy, not a network fault."""
 
-    def __init__(self, message: str, *, blocked: bool = False):
+    def __init__(self, message: str, *, blocked: bool = False, status: int | None = None):
         super().__init__(message)
         self.blocked = blocked
+        self.status = status  # the remote server's HTTP status, when it answered with an error
 
 
 @dataclass(frozen=True)
@@ -149,7 +150,10 @@ async def _fetch(url, max_bytes, timeout_s, allow_private, resolver, transport) 
                         )
                         continue
                     if resp.status_code >= 400:
-                        raise FetchError(f"The remote server answered with HTTP {resp.status_code}")
+                        raise FetchError(
+                            f"The remote server answered with HTTP {resp.status_code}",
+                            status=resp.status_code,
+                        )
                     declared = resp.headers.get("content-length")
                     if declared and declared.isdigit() and int(declared) > max_bytes:
                         raise FetchError(_too_big(max_bytes))
