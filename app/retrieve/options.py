@@ -32,6 +32,15 @@ class FusionOptions(BaseModel):
         return {"dense": self.dense_weight, "sparse": self.sparse_weight}
 
 
+class RerankOptions(BaseModel):
+    """Re-score the best fused candidates with a cross-encoder (Phase 3.4)."""
+
+    enabled: bool = False
+    candidates: int = Field(
+        50, ge=1, le=MAX_POOL, description="How many fused candidates the reranker reads"
+    )
+
+
 class RetrievalOptions(BaseModel):
     mode: Mode = "hybrid"
     top_k: int = Field(10, ge=1, le=MAX_TOP_K)
@@ -42,6 +51,7 @@ class RetrievalOptions(BaseModel):
         None, ge=-1, le=1, description="Dense mode only: drop passages less similar than this"
     )
     fusion: FusionOptions = Field(default_factory=FusionOptions)
+    rerank: RerankOptions = Field(default_factory=RerankOptions)
 
     @model_validator(mode="after")
     def _consistent(self) -> RetrievalOptions:

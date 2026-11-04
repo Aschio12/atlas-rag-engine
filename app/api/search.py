@@ -11,7 +11,7 @@ from sqlalchemy import select
 
 from app.core.auth import ViewerAccess
 from app.core.deps import SessionDep
-from app.core.errors import NotFound
+from app.core.errors import BadRequest, NotFound
 from app.db.models import Collection
 from app.retrieve.filters import (
     FIELDS,
@@ -23,6 +23,7 @@ from app.retrieve.filters import (
 )
 from app.retrieve.options import RetrievalOptions
 from app.retrieve.pipeline import RetrievalPipeline
+from app.retrieve.rerank import RerankUnavailable
 from app.retrieve.types import Hit, RetrievalTrace
 
 router = APIRouter(tags=["search"])
@@ -90,6 +91,7 @@ class SearchOut(BaseModel):
     mode: str
     hits: list[HitOut]
     trace: TraceOut
+    warnings: list[str]
 
 
 class FieldOut(BaseModel):
@@ -133,18 +135,22 @@ async def search(body: SearchRequest, access: ViewerAccess, session: SessionDep,
     reasons it was chosen; `trace` shows what every stage did."""
     collections = await _collections(session, access.workspace.id, body.collection_ids)
     pipeline = RetrievalPipeline(session, request.app.state.providers)
-    result = await pipeline.run(
-        body.query,
-        access.workspace.id,
-        collections,
-        RetrievalOptions(**body.model_dump(include=set(RetrievalOptions.model_fields))),
-        compile_filters(body.filters) if body.filters else CompiledFilter(),
-    )
+    try:
+        result = await pipeline.run(
+            body.query,
+            access.workspace.id,
+            collections,
+            RetrievalOptions(**body.model_dump(include=set(RetrievalOptions.model_fields))),
+            compile_filters(body.filters) if body.filters else CompiledFilter(),
+        )
+    except RerankUnavailable as e:
+        raise BadRequest(str(e)) from None
     return SearchOut(
         query=body.query,
         mode=body.mode,
         hits=[_hit_out(h) for h in result.hits],
         trace=_trace_out(result.trace),
+        warnings=result.warnings,
     )
 
 

@@ -17,12 +17,14 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Collection
+from app.providers.errors import ProviderError
 from app.providers.registry import Providers
 from app.retrieve.candidates import Candidate, fetch_size, search_dense, search_sparse
 from app.retrieve.filters import CompiledFilter
 from app.retrieve.fusion import Fused, reciprocal_rank_fusion, weighted_fusion
 from app.retrieve.hits import build_hit, matched_terms
 from app.retrieve.options import RetrievalOptions
+from app.retrieve.rerank import RerankUnavailable, rerank_hits
 from app.retrieve.resolve import Row, chunk_id_of, load_rows, resolve
 from app.retrieve.types import Hit, RetrievalResult, RetrievalTrace
 
@@ -56,7 +58,11 @@ class RetrievalPipeline:
             raise ValueError("every searched collection must belong to the workspace")
         options = options or RetrievalOptions()
         metadata = metadata or CompiledFilter()
+        reranker = self._providers.reranker if options.rerank.enabled else None
+        if options.rerank.enabled and reranker is None:
+            raise RerankUnavailable("Reranking was requested but RERANK_PROVIDER is not set")
         trace = RetrievalTrace(query)
+        warnings: list[str] = []
 
         started = time.perf_counter()
         models = sorted({c.embed_model for c in collections})
@@ -125,9 +131,28 @@ class RetrievalPipeline:
                 totals[key] += stats[key]
         trace.add("resolve", started, channels=per_channel, **totals)
 
-        hits = self._rank(channels, rows, options, trace)
+        window = max(options.top_k, options.rerank.candidates) if reranker else options.top_k
+        hits = self._rank(channels, rows, options, trace, window)
+        if reranker is not None:
+            hits = await self._rerank(reranker, query, hits, trace, warnings)
+        hits = hits[: options.top_k]
+        for rank, hit in enumerate(hits, start=1):
+            hit.rank = rank
         trace.add("result", time.perf_counter(), returned=len(hits))
-        return RetrievalResult(hits, trace)
+        return RetrievalResult(hits, trace, warnings)
+
+    async def _rerank(self, reranker, query, hits, trace, warnings) -> list[Hit]:
+        started = time.perf_counter()
+        try:
+            outcome = await rerank_hits(reranker, self._providers.rerank_cache, query, hits)
+        except ProviderError as exc:
+            # Reranking sharpens the order but is not needed to answer: serve the fused order
+            # and say so, rather than fail the whole search.
+            warnings.append(f"Reranking failed ({exc}); results are in fused order")
+            trace.add("rerank", started, failed=True, error=str(exc), candidates=len(hits))
+            return hits
+        trace.add("rerank", started, **outcome.details)
+        return outcome.hits
 
     # -- ranking -----------------------------------------------------------------------------
 
@@ -137,6 +162,7 @@ class RetrievalPipeline:
         rows: dict[uuid.UUID, Row],
         options: RetrievalOptions,
         trace: RetrievalTrace,
+        window: int,
     ) -> list[Hit]:
         maps = {c.label: c.by_chunk for c in channels}
         fused: list[Fused] | None = None
@@ -174,7 +200,7 @@ class RetrievalPipeline:
             order = [(i, cand.point.score, None) for i, (_, cand) in only.by_chunk.items()]
 
         hits: list[Hit] = []
-        for chunk_id, score, f in order[: options.top_k]:
+        for chunk_id, score, f in order[:window]:
             chunk, doc = rows[chunk_id]
             present = [(c, maps[c.label][chunk_id]) for c in channels if chunk_id in maps[c.label]]
             scores = {c.label: cand.point.score for c, (_, cand) in present}

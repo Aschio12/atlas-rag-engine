@@ -14,6 +14,7 @@ class Providers:
         self._store: VectorStore | None = None
         self._reranker: Reranker | None = None
         self._reranker_built = False
+        self._rerank_cache = None
 
     @property
     def reranker(self) -> Reranker | None:
@@ -23,6 +24,17 @@ class Providers:
             self._reranker = build_reranker(self._settings, llm)
             self._reranker_built = True
         return self._reranker
+
+    @property
+    def rerank_cache(self):
+        """Scores of (query, passage) pairs already reranked, shared by every search."""
+        if self._rerank_cache is None:
+            from app.retrieve.rerank import RerankCache
+
+            self._rerank_cache = RerankCache(
+                self._settings.rerank_cache_entries, self._settings.rerank_cache_ttl_s
+            )
+        return self._rerank_cache
 
     @property
     def llm(self) -> LLM:

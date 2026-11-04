@@ -56,3 +56,4 @@ class RetrievalTrace:
 class RetrievalResult:
     hits: list[Hit]
     trace: RetrievalTrace
+    warnings: list[str] = field(default_factory=list)  # degraded behaviour the caller should see
