@@ -57,3 +57,20 @@ def test_build_vector_store():
 def test_openai_embeddings_require_key():
     with pytest.raises(ValueError):
         make(embed_provider="openai")
+
+
+def test_embedder_for_reuses_the_default_and_caches_other_models():
+    from app.core.config import Settings
+    from app.providers.registry import Providers
+
+    p = Providers(
+        Settings(_env_file=None, llm_provider="fake", embed_provider="fake", vector_store="memory")
+    )
+    default = p.embedder
+    assert p.embedder_for(None) is default
+    assert p.embedder_for("") is default
+    assert p.embedder_for(p._settings.resolved_embed_model) is default
+    other = p.embedder_for("custom-model")
+    assert other.model == "custom-model" and other is not default
+    assert p.embedder_for("custom-model") is other  # cached
+    assert p.embedder_for("another").model == "another"

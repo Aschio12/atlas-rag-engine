@@ -22,8 +22,9 @@ def build_llm(s: Settings) -> LLM:
             return FakeLLM(model)
 
 
-def build_embedder(s: Settings) -> Embedder:
-    model = s.resolved_embed_model
+def build_embedder(s: Settings, model: str | None = None) -> Embedder:
+    """The configured embedding provider, for `model` (default: the configured model)."""
+    model = model or s.resolved_embed_model
     match s.embed_provider:
         case "ollama":
             return OllamaEmbedder(s.ollama_url, model)

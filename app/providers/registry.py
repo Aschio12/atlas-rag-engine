@@ -10,6 +10,7 @@ class Providers:
         self._settings = settings
         self._llm: LLM | None = None
         self._embedder: Embedder | None = None
+        self._embedders: dict[str, Embedder] = {}
         self._store: VectorStore | None = None
 
     @property
@@ -22,13 +23,22 @@ class Providers:
         self._embedder = self._embedder or build_embedder(self._settings)
         return self._embedder
 
+    def embedder_for(self, model: str | None) -> Embedder:
+        """The embedder for a collection's model. Each collection fixes its embedding model at
+        creation, so vectors in one index always come from one model."""
+        if not model or model == self._settings.resolved_embed_model:
+            return self.embedder
+        if model not in self._embedders:
+            self._embedders[model] = build_embedder(self._settings, model)
+        return self._embedders[model]
+
     @property
     def vector_store(self) -> VectorStore:
         self._store = self._store or build_vector_store(self._settings)
         return self._store
 
     async def aclose(self) -> None:
-        for p in (self._llm, self._embedder, self._store):
+        for p in (self._llm, self._embedder, self._store, *self._embedders.values()):
             client = getattr(p, "_client", None)
             if client is not None:
                 await client.aclose()
