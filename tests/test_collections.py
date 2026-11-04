@@ -186,3 +186,81 @@ async def test_deleting_workspace_removes_its_collections(client, app, signup):
     assert (await client.delete(f"/v1/workspaces/{ws}", headers=h)).status_code == 204
     async with app.state.sessionmaker() as s:
         assert (await s.execute(select(func.count()).select_from(Collection))).scalar_one() == 0
+
+
+async def test_chunking_config_defaults_are_stored_and_returned(client, signup):
+    h = await signup()
+    ws = (await client.post("/v1/workspaces", json={"name": "W"}, headers=h)).json()["id"]
+    r = await client.post(f"/v1/workspaces/{ws}/collections", json={"name": "C"}, headers=h)
+    assert r.status_code == 201
+    assert r.json()["chunking_config"]["target_tokens"] == 400
+    assert r.json()["chunking_config"]["overlap_tokens"] == 50
+
+
+async def test_chunking_config_can_be_customised_per_collection(client, signup):
+    h = await signup()
+    ws = (await client.post("/v1/workspaces", json={"name": "W"}, headers=h)).json()["id"]
+    body = {
+        "name": "Small chunks",
+        "chunking_strategy": "parent_child",
+        "chunking_config": {"parent_tokens": 800, "child_tokens": 120, "overlap_tokens": 10},
+    }
+    created = (await client.post(f"/v1/workspaces/{ws}/collections", json=body, headers=h)).json()
+    assert created["chunking_strategy"] == "parent_child"
+    assert (
+        created["chunking_config"]["parent_tokens"],
+        created["chunking_config"]["child_tokens"],
+    ) == (800, 120)
+    fetched = await client.get(f"/v1/workspaces/{ws}/collections/{created['id']}", headers=h)
+    assert fetched.json()["chunking_config"] == created["chunking_config"]
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"target_tokens": 5},
+        {"target_tokens": 400, "overlap_tokens": 399},
+        {"max_tokens": 10},
+        {"surprise": 1},
+        {"breakpoint_percentile": 150},
+    ],
+)
+async def test_invalid_chunking_config_is_a_422(client, signup, config):
+    h = await signup()
+    ws = (await client.post("/v1/workspaces", json={"name": "W"}, headers=h)).json()["id"]
+    r = await client.post(
+        f"/v1/workspaces/{ws}/collections", json={"name": "C", "chunking_config": config}, headers=h
+    )
+    assert r.status_code == 422
+
+
+async def test_chunking_config_cannot_be_changed_after_creation(client, signup):
+    h = await signup()
+    ws = (await client.post("/v1/workspaces", json={"name": "W"}, headers=h)).json()["id"]
+    col = (
+        await client.post(f"/v1/workspaces/{ws}/collections", json={"name": "C"}, headers=h)
+    ).json()
+    r = await client.patch(
+        f"/v1/workspaces/{ws}/collections/{col['id']}",
+        json={"name": "C2", "chunking_config": {"target_tokens": 100}},
+        headers=h,
+    )
+    assert r.status_code == 200  # unknown fields are ignored, as for chunking_strategy
+    assert r.json()["chunking_config"]["target_tokens"] == 400
+
+
+async def test_collections_created_before_the_column_existed_report_defaults(client, app, signup):
+    from sqlalchemy import update
+
+    from app.db.models import Collection
+
+    h = await signup()
+    ws = (await client.post("/v1/workspaces", json={"name": "W"}, headers=h)).json()["id"]
+    col = (
+        await client.post(f"/v1/workspaces/{ws}/collections", json={"name": "C"}, headers=h)
+    ).json()
+    async with app.state.sessionmaker() as s:
+        await s.execute(update(Collection).values(chunking_config={}))
+        await s.commit()
+    r = await client.get(f"/v1/workspaces/{ws}/collections/{col['id']}", headers=h)
+    assert r.json()["chunking_config"]["target_tokens"] == 400
