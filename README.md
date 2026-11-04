@@ -2,7 +2,7 @@
 
 Backend of **Atlas**, a multi-workspace RAG platform: hybrid retrieval (BM25 + dense + RRF), cross-encoder reranking, a knowledge graph layer, agentic query planning, citation-grounded answers, and a built-in evaluation harness.
 
-> **Status:** early development. Done: configuration, app factory, Docker stack, database models and migrations (1.1-1.4), pluggable providers (1.5), JWT auth with workspace roles (1.6), structured logging and Problem+JSON errors (1.7), workspace and collection CRUD (1.8), **document upload and URL ingestion (2.1), a durable job queue with live progress (2.2) and parsers for PDF, DOCX, PPTX, HTML, Markdown, CSV and text with OCR fallback (2.3)**. Next: chunking (2.4), enrichment (2.5) and embedding/indexing (2.6). Retrieval, agents and evaluation described below are planned, not built.
+> **Status:** early development. Done: configuration, app factory, Docker stack, database models and migrations (1.1-1.4), pluggable providers (1.5), JWT auth with workspace roles (1.6), structured logging and Problem+JSON errors (1.7), workspace and collection CRUD (1.8), **document upload and URL ingestion (2.1), a durable job queue with live progress (2.2) and parsers for PDF, DOCX, PPTX, HTML, Markdown, CSV and text with OCR fallback (2.3)**. **Chunking with five strategies: fixed, recursive, semantic, parent-child and contextual (2.4)**. Next: enrichment (2.5) and embedding/indexing (2.6). Retrieval, agents and evaluation described below are planned, not built.
 
 ## Planned architecture
 
@@ -15,7 +15,7 @@ Eval   -> Golden sets, RAGAS-style metrics, regression gate in CI
 
 ## Roadmap
 1. Foundation: config, Docker, database, providers, auth, errors/logging, CRUD (done)
-2. Ingestion and chunking (upload, queue and parsers done; chunking, enrichment and indexing next)
+2. Ingestion and chunking (upload, queue, parsers and chunking done; enrichment and indexing next)
 3. Hybrid retrieval and reranking
 4. Grounded generation with citations
 5. Agentic RAG and graph retrieval
@@ -63,7 +63,8 @@ Errors come back as `application/problem+json` and every response carries an `X-
 7. **Upload**: `POST /v1/workspaces/{workspace_id}/collections/{collection_id}/documents`, choose any PDF, DOCX, PPTX, HTML, Markdown, CSV or text file (or use `.../documents/text` to paste text, or `.../documents/url` to fetch a page). The response already contains a `job`.
 8. **Watch the job**: `GET /v1/workspaces/{workspace_id}/jobs/{job_id}` shows `queued` then `done` (or `failed` with a readable reason). `GET .../jobs/{job_id}/events` streams the same changes live (server-sent events).
 9. **Read what was extracted**: `GET .../documents/{document_id}/parsed` returns the clean text, the page map and the headings. Every future citation will point into this text.
-10. **Try the guards**: upload the same file again (409 with the existing document id), rename an `.exe` to `.pdf` (415), upload something over the size limit (413), submit `http://169.254.169.254/` as a URL (400, blocked).
+10. **Choose how documents are split**: when creating a collection set `chunking_strategy` (`fixed`, `recursive`, `semantic`, `parent_child`, `contextual`) and optionally `chunking_config`. Try `POST /v1/workspaces/{workspace_id}/chunking/preview` first: paste text, pick a strategy and sizes and see the chunks and statistics without storing anything. After a document is ready, `GET .../documents/{document_id}/chunks` lists its stored chunks with offsets, page and heading breadcrumb.
+11. **Try the guards**: upload the same file again (409 with the existing document id), rename an `.exe` to `.pdf` (415), upload something over the size limit (413), submit `http://169.254.169.254/` as a URL (400, blocked).
 
 The fake providers are deterministic stand-ins for wiring checks. For real models set `LLM_PROVIDER=ollama` (default) with Ollama running, or `openai` / `anthropic` with an API key; see `.env.example`. Playground endpoints return 404 when `APP_ENV=prod`.
 
@@ -76,6 +77,7 @@ The fake providers are deterministic stand-ins for wiring checks. For real model
 | Collections | `POST,GET /v1/workspaces/{id}/collections`, `GET,PATCH,DELETE .../{collection_id}` | member (write), viewer (read), admin (delete) |
 
 | Documents | `POST /v1/workspaces/{id}/collections/{cid}/documents` (file), `.../documents/text`, `.../documents/url`; `GET` list / detail / `.../parsed` / `.../original`; `DELETE` | member (write), viewer (read) |
+| Chunks | `GET .../documents/{document_id}/chunks`, `POST /v1/workspaces/{id}/chunking/preview` | viewer (read), member (preview) |
 | Jobs | `GET /v1/workspaces/{id}/jobs`, `GET .../jobs/{job_id}`, `GET .../jobs/{job_id}/events` (SSE), `POST .../jobs/{job_id}/retry` | viewer (read), member (retry) |
 
 Roles are `viewer < member < admin < owner`. Non-members receive 404, never 403, so workspace ids cannot be probed.
@@ -92,7 +94,21 @@ upload / text / URL ──> validate + dedupe ──> blob store ──> job que
 * **Parsers that keep structure.** Headings, page/slide numbers, lists, tables (`cell | cell` rows), PDF multi-column reading order, hyphenation repair, removal of repeated page headers/footers, speaker notes, CSV rows labelled by column. Scanned PDFs use Tesseract if installed (`pip install .[ocr]` plus the `tesseract` binary, or `docker build --build-arg WITH_OCR=true .`); otherwise those pages are skipped with a warning.
 * **One coordinate system.** All offsets (headings, pages, and later every chunk and citation) index the single normalised text returned by `.../parsed`.
 
-Not yet: chunking, embeddings and indexing (2.4-2.6), so `ready` currently means "parsed". Limitations: DOCX has no page numbers (Word paginates at render time); text boxes and footnotes in DOCX are not read; PDF tables without ruling lines are read as text.
+Not yet: embeddings and indexing (2.6), so `ready` currently means "parsed and chunked". Limitations: DOCX has no page numbers (Word paginates at render time); text boxes and footnotes in DOCX are not read; PDF tables without ruling lines are read as text.
+
+### Chunking strategies (2.4)
+
+Every chunker works on character spans of the single parsed text, so each chunk is an exact slice of it (`text[char_start:char_end]`): citations can highlight the precise passage and no text is ever lost or rewritten. Sizes are estimated tokens and set per collection (`target_tokens`, `overlap_tokens`, `max_tokens`, ...).
+
+| Strategy | What it does | Use it when | Cost |
+|---|---|---|---|
+| `fixed` | Sliding window with overlap; cuts snap to whitespace | A baseline to compare against | none |
+| `recursive` (default) | Splits by section, paragraph, line, sentence, word; merges up to the target; keeps a heading with its text, never strands one, overlaps whole sentences without crossing sections, keeps table rows and list items whole | Most documents | none |
+| `semantic` | Embeds sentences and cuts where the topic shifts (distance above a percentile), within size limits | Long mixed-topic text | one embedding per sentence |
+| `parent_child` | Small child chunks are searched; each points at a large parent chunk used as answer context | Answers that need surrounding context | none (more rows) |
+| `contextual` | An LLM writes a short situating sentence per chunk, embedded with the passage; the document is a cached prompt prefix, calls are capped by `context_max_chunks`, failures degrade gracefully | Ambiguous chunks ("revenue grew 3%" of whom?) | one LLM call per chunk (cached prefix) |
+
+Which one is best on *your* data is an empirical question: Phase 6 adds an evaluation harness that will report the numbers.
 
 ## Providers
 
