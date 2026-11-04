@@ -304,3 +304,30 @@ async def test_enriching_counts_as_a_running_state(sm, make_doc):
         await s.commit()
     assert JobState.ENRICHING in queue.RUNNING_STATES
     assert await _claim(sm, now=utcnow() + timedelta(seconds=LEASE + 1)) is not None  # reclaimable
+
+
+async def test_jobs_created_in_quick_succession_keep_their_order(sm, make_doc):
+    doc = await make_doc()
+    ids = []
+    for _ in range(5):
+        async with sm() as s:
+            job = await queue.enqueue(s, doc)
+            await s.commit()
+        ids.append(job.id)
+        c = await _claim(sm)
+        async with sm() as s:
+            await queue.complete(s, c)
+            await s.commit()
+    async with sm() as s:
+        rows = (
+            (
+                await s.execute(
+                    select(IngestJob)
+                    .where(IngestJob.document_id == doc)
+                    .order_by(IngestJob.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert [j.id for j in rows] == ids  # no ties: the newest job is unambiguous
