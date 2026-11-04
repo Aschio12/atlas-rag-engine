@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Query, Request, Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -18,8 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import AdminAccess, CurrentUser, OwnerAccess, ViewerAccess
 from app.core.deps import BlobsDep, SessionDep
 from app.core.errors import Conflict
-from app.db.models import Role, Workspace, WorkspaceMember
+from app.db.models import Collection, Role, Workspace, WorkspaceMember
 from app.ingest import keys
+from app.ingest.purge import purge_collection
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 
@@ -151,9 +152,22 @@ async def update_workspace(body: WorkspaceUpdate, access: AdminAccess, session: 
 
 
 @router.delete("/{workspace_id}", status_code=204)
-async def delete_workspace(access: OwnerAccess, session: SessionDep, blobs: BlobsDep) -> Response:
-    """Delete a workspace and everything in it, including stored files (owner only)."""
+async def delete_workspace(
+    request: Request, access: OwnerAccess, session: SessionDep, blobs: BlobsDep
+) -> Response:
+    """Delete a workspace and everything in it, including vectors and files (owner only)."""
     prefix = keys.workspace_prefix(access.workspace.id)
+    collection_ids = (
+        (
+            await session.execute(
+                select(Collection.id).where(Collection.workspace_id == access.workspace.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for cid in collection_ids:
+        await purge_collection(request.app.state.providers, cid)
     await session.delete(access.workspace)
     await session.commit()
     await blobs.delete_prefix(prefix)
