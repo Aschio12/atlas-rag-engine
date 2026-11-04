@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from app.api import (
+    answer,
     auth,
     chunks,
     collections,
@@ -28,3 +29,4 @@ router.include_router(reindex.router)
 router.include_router(sources.router)
 router.include_router(search.router)
 router.include_router(retrievals.router)
+router.include_router(answer.router)
