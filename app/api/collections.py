@@ -18,6 +18,7 @@ from app.core.errors import Conflict, NotFound
 from app.db.models import ChunkingStrategy, Collection, Document
 from app.ingest import keys
 from app.ingest.chunking import ChunkingConfig
+from app.ingest.enrichment.config import EnrichmentConfig
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/collections", tags=["collections"])
 
@@ -36,6 +37,11 @@ class CollectionCreate(BaseModel):
     chunking_config: ChunkingConfig = Field(
         default_factory=ChunkingConfig,
         description="Chunk sizes and strategy options. Fixed after creation.",
+    )
+    enrichment: EnrichmentConfig = Field(
+        default_factory=EnrichmentConfig,
+        description="Per-chunk enrichment (language, keywords, optional LLM summaries and "
+        "hypothetical questions).",
     )
     embed_model: str | None = Field(
         default=None,
@@ -72,6 +78,7 @@ class CollectionOut(BaseModel):
     description: str
     chunking_strategy: ChunkingStrategy
     chunking_config: ChunkingConfig
+    enrichment: EnrichmentConfig
     embed_model: str
     document_count: int
     created_at: datetime
@@ -91,6 +98,7 @@ def to_out(c: Collection, document_count: int) -> CollectionOut:
         description=c.description,
         chunking_strategy=c.chunking_strategy,
         chunking_config=ChunkingConfig(**(c.chunking_config or {})),
+        enrichment=EnrichmentConfig(**(c.enrichment_config or {})),
         embed_model=c.embed_model,
         document_count=document_count,
         created_at=c.created_at,
@@ -144,6 +152,7 @@ async def create_collection(
         description=body.description,
         chunking_strategy=body.chunking_strategy,
         chunking_config=body.chunking_config.model_dump(),
+        enrichment_config=body.enrichment.model_dump(),
         embed_model=body.embed_model or settings.resolved_embed_model,
     )
     session.add(collection)
