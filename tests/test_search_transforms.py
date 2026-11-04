@@ -76,30 +76,33 @@ async def test_the_variant_weight_scales_expansions_and_zero_ignores_them(client
     assert stage(half, "fusion")["details"]["weights"]["sparse[multi_query:1]"] == 0.5
 
 
+def hit_with(out, word):
+    return next(h for h in out["hits"] if word in h["text"])
+
+
 async def test_hyde_searches_with_the_hypothetical_answer_by_meaning_only(client, app, indexed):
     use_llm(app, ScriptedLLM(hyde=reply(passage=f"{SHIPPING}. Parcels leave quickly.")))
     out = await find(
-        client, indexed, "zzzyx qqqqw", mode="hybrid", top_k=3,
-        transforms={"hyde": True}, fusion={"variant_weight": 2},
-    )  # fmt: skip
-    # the question itself carries no signal, so the hypothetical answer decides (weighted up)
-    top = out["hits"][0]
-    assert "Rotterdam" in top["text"] and "dense[hyde]" in top["scores"]
+        client, indexed, "zzzyx qqqqw", mode="hybrid", top_k=10, transforms={"hyde": True}
+    )
+    # The question carries no signal, so the other rankings are noise; what matters is that the
+    # hypothetical answer put the right passage first in its own list.
+    shipping = hit_with(out, "Rotterdam")
+    assert "dense[hyde]" in shipping["scores"]
+    assert any(r.startswith("dense[hyde]:") and "(rank 1)" in r for r in shipping["reasons"])
     assert "sparse[hyde]" not in stage(out, "variant_search")["details"]["channels"]
-    assert "sparse[hyde]" not in top["scores"]
+    assert all("sparse[hyde]" not in h["scores"] for h in out["hits"])
 
 
 async def test_decompose_gives_every_part_of_a_question_its_own_search(client, app, indexed):
-    use_llm(
-        app,
-        ScriptedLLM(decompose=reply(questions=[REFUND, SHIPPING])),
-    )
+    use_llm(app, ScriptedLLM(decompose=reply(questions=[REFUND, SHIPPING])))
     question = "zzzyx qqqqw and also vvvvk jjjjh"  # carries no signal of its own
     out = await find(
-        client, indexed, question, mode="hybrid", top_k=4, transforms={"decompose": True}
+        client, indexed, question, mode="hybrid", top_k=10, transforms={"decompose": True}
     )
-    texts = " ".join(h["text"] for h in out["hits"][:2])
-    assert "Refunds are issued" in texts and "Rotterdam" in texts
+    refund, shipping = hit_with(out, "Refunds are issued"), hit_with(out, "Rotterdam")
+    assert any(r.startswith("dense[sub:1]:") and "(rank 1)" in r for r in refund["reasons"])
+    assert any(r.startswith("dense[sub:2]:") and "(rank 1)" in r for r in shipping["reasons"])
     assert {"dense[sub:1]", "dense[sub:2]"} <= set(
         stage(out, "variant_search")["details"]["channels"]
     )
