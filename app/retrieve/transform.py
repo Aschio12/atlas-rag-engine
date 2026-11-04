@@ -54,8 +54,13 @@ class TransformOptions(BaseModel):
     max_sub_questions: int = Field(4, ge=1, le=6)
 
     @property
+    def expansions(self) -> bool:
+        """Any technique that adds extra searches (everything but rewrite)."""
+        return any((self.multi_query, self.hyde, self.step_back, self.decompose))
+
+    @property
     def any(self) -> bool:
-        return any((self.rewrite, self.multi_query, self.hyde, self.step_back, self.decompose))
+        return self.rewrite or self.expansions
 
 
 @dataclass(frozen=True)
@@ -209,55 +214,66 @@ class QueryTransformer:
         return _clean_list(data.get("questions"), n, query)
 
 
-async def transform_query(
-    llm: LLM,
-    query: str,
+async def _timed(result: TransformResult, name: str, coro):
+    started = time.perf_counter()
+    try:
+        return await coro
+    except ProviderError as exc:
+        result.warnings.append(f"Query transform '{name}' failed ({exc}); skipped")
+        return None
+    finally:
+        result.took_ms[name] = round((time.perf_counter() - started) * 1000, 2)
+
+
+async def apply_rewrite(
+    tf: QueryTransformer,
+    result: TransformResult,
     history: list[Turn],
+    options: TransformOptions,
+) -> None:
+    """Replace `result.primary` with a standalone version of it, when asked and possible."""
+    if not options.rewrite:
+        return
+    if not history:
+        result.skipped["rewrite"] = "no conversation history was sent"
+    elif (
+        rewritten := await _timed(result, "rewrite", tf.rewrite(result.primary, history))
+    ) is not None:
+        result.primary = rewritten
+
+
+async def apply_expansions(
+    tf: QueryTransformer,
+    result: TransformResult,
     options: TransformOptions,
     *,
     mode: str,
-) -> TransformResult:
-    """Run the enabled transformations. `mode` decides which channels a variant can use."""
-    result = TransformResult(primary=query)
-    tf = QueryTransformer(llm)
+) -> None:
+    """Add extra searches (multi-query, step-back, sub-questions, HyDE) based on `primary`.
+    `mode` decides which channels a variant can use."""
+    primary = result.primary
     both = (
         ("sparse",) if mode == "sparse" else ("dense",) if mode == "dense" else ("dense", "sparse")
     )
-
-    async def timed(name: str, coro):
-        started = time.perf_counter()
-        try:
-            return await coro
-        except ProviderError as exc:
-            result.warnings.append(f"Query transform '{name}' failed ({exc}); skipped")
-            return None
-        finally:
-            result.took_ms[name] = round((time.perf_counter() - started) * 1000, 2)
-
-    if options.rewrite:
-        if not history:
-            result.skipped["rewrite"] = "no conversation history was sent"
-        elif (rewritten := await timed("rewrite", tf.rewrite(query, history))) is not None:
-            result.primary = rewritten
-
-    primary = result.primary
     jobs: dict[str, object] = {}
     if options.multi_query:
-        jobs["multi_query"] = timed(
-            "multi_query", tf.multi_query(primary, options.multi_query_count)
+        jobs["multi_query"] = _timed(
+            result, "multi_query", tf.multi_query(primary, options.multi_query_count)
         )
     if options.hyde:
         if mode == "sparse":
             result.skipped["hyde"] = "a hypothetical answer needs embeddings (dense or hybrid mode)"
         else:
-            jobs["hyde"] = timed("hyde", tf.hyde(primary))
+            jobs["hyde"] = _timed(result, "hyde", tf.hyde(primary))
     if options.step_back:
-        jobs["step_back"] = timed("step_back", tf.step_back(primary))
+        jobs["step_back"] = _timed(result, "step_back", tf.step_back(primary))
     if options.decompose:
-        jobs["decompose"] = timed("decompose", tf.decompose(primary, options.max_sub_questions))
+        jobs["decompose"] = _timed(
+            result, "decompose", tf.decompose(primary, options.max_sub_questions)
+        )
     outputs = dict(zip(jobs, await asyncio.gather(*jobs.values()), strict=True))
 
-    seen = {primary.casefold()}
+    seen = {primary.casefold(), *(v.text.casefold() for v in result.variants)}
 
     def add(label: str, text: str, kinds: tuple[str, ...]) -> None:
         if text.casefold() in seen or len(result.variants) >= MAX_VARIANTS:
@@ -277,5 +293,20 @@ async def transform_query(
             add(f"sub:{i}", text, both)
     if outputs.get("hyde"):
         add("hyde", outputs["hyde"], ("dense",))  # the passage is matched by meaning, not words
+
+
+async def transform_query(
+    llm: LLM,
+    query: str,
+    history: list[Turn],
+    options: TransformOptions,
+    *,
+    mode: str,
+) -> TransformResult:
+    """Run every enabled transformation: rewrite first, the rest on its result."""
+    result = TransformResult(primary=query)
+    tf = QueryTransformer(llm)
+    await apply_rewrite(tf, result, history, options)
+    await apply_expansions(tf, result, options, mode=mode)
     result.llm_calls, result.usage = tf.calls, tf.usage
     return result
