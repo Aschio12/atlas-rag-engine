@@ -72,6 +72,7 @@ class ScriptedLLM(FakeLLM):
         "hyde": "short passage",
         "step_back": "broader, more general question",
         "decompose": "sub-questions",
+        "self_query": "cleaned search query plus metadata filters",
     }
 
     def __init__(self, **replies):

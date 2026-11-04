@@ -30,16 +30,16 @@ async def test_rewrite_turns_a_follow_up_into_a_question_that_can_be_searched(cl
     )  # fmt: skip
     assert "Rotterdam" in out["hits"][0]["text"]
     assert "Rotterdam" not in plain["hits"][0]["text"]
-    t = stage(out, "transform")["details"]
-    assert t["original"] == "how long does it take?" and t["primary"] == SHIPPING
-    assert t["enabled"] == ["rewrite"] and t["llm_calls"] == 1
+    t = stage(out, "rewrite")["details"]
+    assert t["original"] == "how long does it take?" and t["rewritten"] == SHIPPING
+    assert "transform" not in [s["name"] for s in out["trace"]["stages"]]  # no extra searches
     assert out["query"] == "how long does it take?"  # the response echoes what the user typed
 
 
 async def test_rewrite_without_history_changes_nothing(client, app, indexed):
     llm = use_llm(app, ScriptedLLM(rewrite=reply(query="never used")))
     out = await find(client, indexed, "refund policy", mode="hybrid", transforms={"rewrite": True})
-    assert llm.calls == [] and "history" in stage(out, "transform")["details"]["skipped"]["rewrite"]
+    assert llm.calls == [] and "history" in stage(out, "rewrite")["details"]["skipped"]["rewrite"]
 
 
 async def test_multi_query_finds_passages_the_original_wording_misses(client, app, indexed):
