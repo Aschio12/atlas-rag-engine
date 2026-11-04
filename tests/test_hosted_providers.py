@@ -107,3 +107,58 @@ async def test_anthropic_omits_system_when_absent_and_rejects_bad_shape():
     with pytest.raises(ProviderError):
         await AnthropicLLM("k", "m", client=client(handler)).complete([ChatMessage("user", "hi")])
     assert "system" not in seen["body"]
+
+
+async def test_anthropic_marks_the_cached_system_prefix_and_reports_cache_reads():
+    seen = {}
+
+    def handler(req):
+        seen["body"] = json.loads(req.content)
+        return httpx.Response(
+            200,
+            json={
+                "content": [{"type": "text", "text": "ok"}],
+                "usage": {"input_tokens": 12, "output_tokens": 3, "cache_read_input_tokens": 900},
+            },
+        )
+
+    llm = AnthropicLLM("k", "m", client=client(handler))
+    out = await llm.complete(
+        [
+            ChatMessage("system", "<document>long text</document>", cache=True),
+            ChatMessage("system", "Answer briefly."),
+            ChatMessage("user", "hi"),
+        ]
+    )
+    assert seen["body"]["system"] == [
+        {
+            "type": "text",
+            "text": "<document>long text</document>",
+            "cache_control": {"type": "ephemeral"},
+        },
+        {"type": "text", "text": "Answer briefly."},
+    ]
+    assert out.usage.cached_tokens == 900
+
+
+async def test_openai_reports_cached_prompt_tokens_and_ignores_the_cache_flag():
+    seen = {}
+
+    def handler(req):
+        seen["body"] = json.loads(req.content)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {
+                    "prompt_tokens": 1000,
+                    "completion_tokens": 5,
+                    "prompt_tokens_details": {"cached_tokens": 896},
+                },
+            },
+        )
+
+    llm = OpenAILLM("k", "m", client=client(handler))
+    out = await llm.complete([ChatMessage("system", "shared prefix", cache=True)])
+    assert out.usage.cached_tokens == 896
+    assert seen["body"]["messages"] == [{"role": "system", "content": "shared prefix"}]
