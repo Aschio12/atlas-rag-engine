@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     DateTime,
     Enum,
     Float,
@@ -15,6 +16,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     text,
+    true,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -49,6 +51,8 @@ class Workspace(IdMixin, TimestampMixin, Base):
     slug: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     plan: Mapped[str] = mapped_column(String(32), default="free")
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    # Content rules for answers (Phase 4.6): a validated WorkspacePolicy as JSON.
+    policy: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'"))
 
     members: Mapped[list["WorkspaceMember"]] = relationship(
         back_populates="workspace", cascade="all, delete-orphan", passive_deletes=True
@@ -57,6 +61,9 @@ class Workspace(IdMixin, TimestampMixin, Base):
         back_populates="workspace", cascade="all, delete-orphan", passive_deletes=True
     )
     retrievals: Mapped[list["Retrieval"]] = relationship(
+        cascade="all, delete-orphan", passive_deletes=True
+    )
+    memory_facts: Mapped[list["MemoryFact"]] = relationship(
         cascade="all, delete-orphan", passive_deletes=True
     )
 
@@ -278,6 +285,10 @@ class Conversation(IdMixin, TimestampMixin, Base):
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     title: Mapped[str] = mapped_column(String(200), default="New conversation")
+    # Rolling summary of the oldest messages (Phase 4.4): `summarized_count` messages, counted from
+    # the start of the conversation, are folded into `summary`; newer ones are sent verbatim.
+    summary: Mapped[str] = mapped_column(Text, default="", server_default=text("''"))
+    summarized_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
 
     messages: Mapped[list["Message"]] = relationship(
         back_populates="conversation",
@@ -301,8 +312,28 @@ class Message(IdMixin, TimestampMixin, Base):
     # Tokens, latency per stage and cost (Phase 6.8).
     usage: Mapped[dict | None] = mapped_column(JSON)
     feedback: Mapped[int | None] = mapped_column(Integer)  # -1, 0, +1
+    # Everything else worth knowing about an answer (Phase 4): confidence, grounding, guardrail
+    # findings, the prompt version, warnings, whether it abstained.
+    meta: Mapped[dict | None] = mapped_column("metadata", JSON)
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
+
+
+class MemoryFact(IdMixin, TimestampMixin, Base):
+    """A long-term fact the assistant is told in every conversation of a workspace (Phase 4.4):
+    "answer in British English", "our fiscal year starts in April". Written by people, so they
+    can read, correct and switch off what the assistant 'remembers'."""
+
+    __tablename__ = "memory_facts"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    text: Mapped[str] = mapped_column(String(500))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
 
 
 class EvalStatus(enum.StrEnum):
