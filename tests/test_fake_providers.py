@@ -1,6 +1,6 @@
 import pytest
 
-from app.providers.base import ChatMessage, Point
+from app.providers.base import ChatMessage, Point, SparseVector
 from app.providers.fake import FakeEmbedder, FakeLLM, FakeReranker, InMemoryVectorStore
 
 
@@ -73,3 +73,67 @@ async def test_drop_collection_removes_data():
     await store.drop_collection("c")
     with pytest.raises(KeyError):
         await store.search("c", [1, 0])
+
+
+async def test_sparse_vectors_are_scored_with_idf_so_rare_terms_dominate():
+    store = InMemoryVectorStore()
+    await store.ensure_collection("c", 2, sparse=True)
+    common, rare = 1, 2  # term ids
+    await store.upsert(
+        "c",
+        [
+            Point("a", [1, 0], {}, SparseVector([common, rare], [1.0, 1.0])),
+            Point("b", [1, 0], {}, SparseVector([common], [1.0])),
+            Point("c", [1, 0], {}, SparseVector([common], [1.0])),
+        ],
+    )
+    # "common" appears in every point (near-zero IDF); "rare" only in `a`
+    hits = await store.sparse_search("c", SparseVector([common, rare], [1.0, 1.0]))
+    assert hits[0].id == "a" and hits[0].score > hits[1].score
+    only_rare = await store.sparse_search("c", SparseVector([rare], [1.0]))
+    assert [h.id for h in only_rare] == ["a"]
+
+
+async def test_sparse_search_honours_filters_and_ignores_points_without_sparse():
+    store = InMemoryVectorStore()
+    await store.ensure_collection("c", 2, sparse=True)
+    sv = SparseVector([7], [1.0])
+    await store.upsert(
+        "c",
+        [
+            Point("1", [1, 0], {"doc": "x"}, sv),
+            Point("2", [1, 0], {"doc": "y"}, sv),
+            Point("3", [1, 0], {"doc": "y"}),
+        ],
+    )
+    assert [h.id for h in await store.sparse_search("c", sv, filters={"doc": "y"})] == ["2"]
+    assert await store.sparse_search("c", SparseVector([99], [1.0])) == []
+
+
+async def test_sparse_points_need_a_sparse_collection_and_matching_lengths():
+    store = InMemoryVectorStore()
+    await store.ensure_collection("plain", 2)
+    with pytest.raises(ValueError, match="without sparse"):
+        await store.upsert("plain", [Point("1", [1, 0], {}, SparseVector([1], [1.0]))])
+    with pytest.raises(ValueError):
+        SparseVector([1, 2], [1.0])
+
+
+async def test_count_and_exclude():
+    store = InMemoryVectorStore()
+    await store.ensure_collection("c", 2)
+    await store.upsert(
+        "c",
+        [
+            Point("1", [1, 0], {"doc": "x", "v": "old"}),
+            Point("2", [1, 0], {"doc": "x", "v": "new"}),
+            Point("3", [1, 0], {"doc": "y", "v": "old"}),
+        ],
+    )
+    assert await store.count("c") == 3
+    assert await store.count("c", {"doc": "x"}) == 2
+    await store.delete("c", filters={"doc": "x"}, exclude={"v": "new"})
+    assert await store.count("c", {"doc": "x"}) == 1  # the current version survived
+    assert await store.count("c", {"doc": "y"}) == 1  # other documents are untouched
+    with pytest.raises(ValueError):
+        await store.delete("c", ids=["1"], filters={"doc": "x"})
