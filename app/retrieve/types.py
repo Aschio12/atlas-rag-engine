@@ -95,6 +95,15 @@ class RetrievalTrace:
         }
 
 
+@dataclass(frozen=True)
+class Passage:
+    """Where a retrieved chunk sits in its document (for highlighting and citing)."""
+
+    chunk_id: uuid.UUID
+    char_start: int
+    char_end: int
+
+
 @dataclass
 class ContextBlock:
     """One passage of the assembled context: a retrieved chunk, or the parent section or
@@ -114,6 +123,9 @@ class ContextBlock:
     score: float
     tokens: int
     notes: list[str] = field(default_factory=list)
+    # the retrieved chunks inside the block with their own spans, so a citation of the block
+    # can point at the exact passages that matched, not only at the whole block
+    passages: list[Passage] = field(default_factory=list)
 
 
 @dataclass

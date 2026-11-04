@@ -245,3 +245,18 @@ async def test_invalid_context_options_are_422(client, indexed, body):
         search_url(indexed), json={"query": "x", "context": body}, headers=indexed["headers"]
     )
     assert r.status_code == 422
+
+
+async def test_blocks_list_the_exact_spans_of_the_passages_that_matched(client, app, space):
+    cid, url = await make_collection(client, space, "pc", **PARENT_CHILD)
+    await ingest(client, app, space, url)
+    sp = {**space, "url": url}
+    out = await with_context(client, sp, "Rotterdam warehouse", pool=1, mmr=False)
+    (block,) = out["context"]["blocks"]
+    (passage,) = block["passages"]
+    (hit,) = [h for h in out["hits"] if h["chunk_id"] == passage["chunk_id"]]
+    assert (passage["char_start"], passage["char_end"]) == (hit["char_start"], hit["char_end"])
+    assert block["char_start"] <= passage["char_start"] and passage["char_end"] <= block["char_end"]
+    assert block["chunk_ids"] != [
+        passage["chunk_id"]
+    ]  # the block is the parent, the passage a child

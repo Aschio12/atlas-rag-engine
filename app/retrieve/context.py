@@ -41,7 +41,7 @@ from app.ingest.vectors import vector_collection
 from app.providers.base import VectorStore
 from app.providers.errors import ProviderError
 from app.retrieve.options import ContextOptions
-from app.retrieve.types import ContextBlock, ContextResult, Hit
+from app.retrieve.types import ContextBlock, ContextResult, Hit, Passage
 from app.storage import BlobNotFound, BlobStore
 
 _WORD = re.compile(r"[^\W_]+", re.UNICODE)
@@ -145,6 +145,7 @@ class Block:
     first: Hit  # supplies title, page and heading
     order: int  # position in MMR order of the best hit inside
     notes: list[str] = field(default_factory=list)
+    passages: list[Passage] = field(default_factory=list)
 
     @property
     def tokens(self) -> int:
@@ -207,6 +208,11 @@ def _blocks_for(
             # the run that contains the hit's own span is where the retrieved chunk sits (a parent
             # section or a merged neighbourhood contains it without being it)
             retrieved=[hit.chunk_id] if start <= hit.char_start and hit.char_end <= end else [],
+            passages=(
+                [Passage(hit.chunk_id, hit.char_start, hit.char_end)]
+                if start <= hit.char_start and hit.char_end <= end
+                else []
+            ),
             score=hit.score,
             first=hit,
             order=order,
@@ -244,6 +250,11 @@ def add_blocks(
             text=text,
             pieces=members,
             retrieved=list(dict.fromkeys(i for b in group for i in b.retrieved)),
+            passages=list(
+                {
+                    p.chunk_id: p for b in sorted(group, key=lambda b: b.start) for p in b.passages
+                }.values()
+            ),
             score=max(b.score for b in group),
             first=min((b.first for b in group), key=lambda h: h.char_start),
             order=best.order,
@@ -476,6 +487,7 @@ class ContextAssembler:
             char_end=b.end,
             chunk_ids=[p.chunk_id for p in sorted(b.pieces, key=lambda p: p.start)],
             retrieved_chunk_ids=list(b.retrieved),
+            passages=sorted(b.passages, key=lambda p: p.char_start),
             score=b.score,
             tokens=b.tokens,
             notes=b.notes,

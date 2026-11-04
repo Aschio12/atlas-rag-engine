@@ -103,6 +103,12 @@ class TraceOut(BaseModel):
     )
 
 
+class PassageOut(BaseModel):
+    chunk_id: uuid.UUID
+    char_start: int
+    char_end: int
+
+
 class BlockOut(BaseModel):
     label: str
     text: str
@@ -118,6 +124,7 @@ class BlockOut(BaseModel):
     score: float
     tokens: int
     notes: list[str]
+    passages: list[PassageOut]
 
 
 class ContextOut(BaseModel):
@@ -155,12 +162,14 @@ def _hit_out(h: Hit) -> HitOut:
     return HitOut(**vars(h))
 
 
+def block_out(b) -> BlockOut:
+    return BlockOut(**{**vars(b), "passages": [vars(p) for p in b.passages]})
+
+
 def _context_out(c: ContextResult | None) -> ContextOut | None:
     if c is None:
         return None
-    return ContextOut(
-        blocks=[BlockOut(**vars(b)) for b in c.blocks], tokens=c.tokens, budget=c.budget
-    )
+    return ContextOut(blocks=[block_out(b) for b in c.blocks], tokens=c.tokens, budget=c.budget)
 
 
 def _trace_out(t: RetrievalTrace) -> TraceOut:

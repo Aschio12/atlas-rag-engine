@@ -16,7 +16,7 @@ from app.retrieve.context import (
     mmr_order,
     shingles,
 )
-from app.retrieve.types import Hit
+from app.retrieve.types import Hit, Passage
 
 DOC = uuid.uuid4()
 TEXT = "".join(chr(ord("a") + i % 26) for i in range(200))  # a document whose offsets are visible
@@ -145,7 +145,8 @@ def test_pieces_of_different_documents_are_never_merged_by_add_blocks():
 
 def _block(p, doc, order=0, score=1.0):
     h = hit(p.text, score, start=p.start, doc=doc)
-    return Block(doc, p.start, p.end, p.text, [p], [h.chunk_id], score, h, order)
+    passages = [Passage(h.chunk_id, p.start, p.end)]
+    return Block(doc, p.start, p.end, p.text, [p], [h.chunk_id], score, h, order, passages=passages)
 
 
 def test_add_blocks_merges_overlapping_blocks_of_a_document_and_keeps_the_best_score():
@@ -226,3 +227,10 @@ def test_merge_notes_are_not_repeated_when_blocks_merge_again():
     a, b, c = _block(piece(0, 50), DOC), _block(piece(40, 90), DOC), _block(piece(80, 120), DOC)
     (merged,) = add_blocks(add_blocks([a], [b]), [c])
     assert merged.notes.count("merged overlapping passages") == 1
+
+
+def test_blocks_remember_the_spans_of_the_chunks_retrieval_returned():
+    a, b = _block(piece(0, 50), DOC), _block(piece(40, 90), DOC)
+    (merged,) = add_blocks([a], [b])
+    spans = sorted((p.char_start, p.char_end) for p in merged.passages)
+    assert spans == [(0, 50), (40, 90)] and len(merged.passages) == 2
