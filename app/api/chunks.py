@@ -35,6 +35,10 @@ class ChunkOut(BaseModel):
     parent_id: uuid.UUID | None
     heading_path: list[str]
     context: str | None
+    language: str | None = None
+    keywords: list[str] = []
+    summary: str | None = None
+    questions: list[str] = []
 
 
 class ChunkList(BaseModel):
@@ -77,6 +81,10 @@ def _from_row(c: Chunk) -> ChunkOut:
         parent_id=c.parent_id,
         heading_path=meta.get("heading_path", []),
         context=meta.get("context"),
+        language=meta.get("language"),
+        keywords=meta.get("keywords", []),
+        summary=meta.get("summary"),
+        questions=meta.get("questions", []),
     )
 
 

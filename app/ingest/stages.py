@@ -7,12 +7,16 @@ import json
 import logging
 import uuid
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from app.db.models import Chunk
 from app.ingest import keys
 from app.ingest.chunking import ChunkingConfig, build_chunker
 from app.ingest.chunking.contextual import ContextualChunker
+from app.ingest.enrichment.config import EnrichmentConfig
+from app.ingest.enrichment.keywords import extract_keywords
+from app.ingest.enrichment.language import detect_language, dominant_language
+from app.ingest.enrichment.llm import enrich_with_llm
 from app.ingest.files import Kind, UnsupportedFile, detect_kind
 from app.ingest.parsers import ParsedDocument, ParseError, parse
 from app.ingest.pipeline import PermanentError, StageContext
@@ -107,3 +111,65 @@ async def chunk_stage(ctx: StageContext) -> None:
         summary["context"] = chunker.report.as_dict()
     doc.meta = {**(doc.meta or {}), "chunking": summary}
     log.info("document chunked", extra={"document_id": str(doc.id), **summary})
+
+
+async def enrich_stage(ctx: StageContext) -> None:
+    """Add metadata to each searchable chunk: language and keywords (offline), and optionally an
+    LLM summary and hypothetical questions. Stored in the chunk's metadata; idempotent, and
+    fields that are switched off (or were skipped by a cap) are removed rather than left stale.
+    """
+    doc, col = ctx.document, ctx.collection
+    cfg = EnrichmentConfig(**(col.enrichment_config or {}))
+    rows = (
+        (
+            await ctx.session.execute(
+                select(Chunk).where(Chunk.document_id == doc.id).order_by(Chunk.ordinal)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    chunks = [c for c in rows if (c.meta or {}).get("kind", "chunk") != "parent"]
+    texts = [c.text for c in chunks]
+
+    languages = [detect_language(t) if cfg.language else None for t in texts]
+    keywords = extract_keywords(texts, cfg.max_keywords) if cfg.keywords else [[] for _ in texts]
+    await ctx.progress(0.2)
+    llm_results, report = await enrich_with_llm(
+        ctx.providers.llm,
+        [((c.meta or {}).get("heading_path", []), c.text) for c in chunks],
+        cfg,
+    )
+
+    questions = 0
+    for chunk, lang, kws, extra in zip(chunks, languages, keywords, llm_results, strict=True):
+        meta = {
+            k: v
+            for k, v in (chunk.meta or {}).items()
+            if k not in ("language", "keywords", "summary", "questions")
+        }
+        if lang:
+            meta["language"] = lang.code
+        if kws:
+            meta["keywords"] = kws
+        if extra and extra.summary:
+            meta["summary"] = extra.summary
+        if extra and extra.questions:
+            meta["questions"] = extra.questions
+            questions += len(extra.questions)
+        chunk.meta = meta  # a new dict, so the JSON column is saved
+
+    language = dominant_language([c.meta.get("language") for c in chunks])
+    summary = {
+        "language": language,
+        "keywords": cfg.keywords,
+        "summaries": sum(1 for c in chunks if c.meta.get("summary")),
+        "questions": questions,
+    }
+    if cfg.uses_llm:
+        summary["llm"] = report.as_dict()
+    doc.meta = {**(doc.meta or {}), "language": language, "enrichment": summary}
+    log.info(
+        "document enriched",
+        extra={"document_id": str(doc.id), **{k: v for k, v in summary.items() if k != "llm"}},
+    )
