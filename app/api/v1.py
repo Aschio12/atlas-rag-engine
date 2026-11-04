@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api import auth, collections, documents, jobs, providers, workspaces
+from app.api import auth, chunks, collections, documents, jobs, providers, workspaces
 
 router = APIRouter(prefix="/v1")
 router.include_router(providers.router)
@@ -11,3 +11,4 @@ router.include_router(workspaces.router)
 router.include_router(collections.router)
 router.include_router(documents.router)
 router.include_router(jobs.router)
+router.include_router(chunks.router)
