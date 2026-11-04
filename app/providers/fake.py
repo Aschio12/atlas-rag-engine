@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import re
+from collections.abc import AsyncIterator
 from typing import Any
 
 from app.providers.base import (
@@ -19,6 +21,7 @@ from app.providers.base import (
     Reranker,
     ScoredPoint,
     SparseVector,
+    StreamChunk,
     Usage,
     VectorStore,
     check_filters,
@@ -31,8 +34,57 @@ def tokenize(text: str) -> list[str]:
     return _TOKEN.findall(text.lower())
 
 
+_STOP = frozenset(
+    "a an the of to in on for and or is are was were be do does did what which who how why when "
+    "where i my me you your it its this that with from by at as can could should would "
+    "about".split()
+)
+_SOURCE = re.compile(r'<source id="(S\d+)"[^>]*>\n(.*?)\n</source>', re.DOTALL)
+_QUESTION_TAG = re.compile(r"<question>(.*?)</question>", re.DOTALL)
+
+
+def _extractive_answer(prompt: str) -> str | None:
+    """What the fake LLM says to a grounded-answer prompt: the sentences of the sources that share
+    the most words with the question, each cited, or NOT_FOUND when none does. It is a stub that
+    makes the whole answering path (citations, abstention, streaming) work with no model."""
+    if "<sources>" not in prompt or "Question:" not in prompt:
+        return None
+    question = prompt.rsplit("Question:", 1)[1]
+    wanted = {t for t in tokenize(question) if t not in _STOP and len(t) > 2}
+    picks: list[tuple[int, str, str]] = []
+    for label, text in _SOURCE.findall(prompt):
+        best: tuple[int, str] | None = None
+        for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
+            sentence = sentence.strip().lstrip("#-*0123456789. ").strip()
+            if len(sentence.split()) < 3:
+                continue
+            score = len(wanted & set(tokenize(sentence)))
+            if score and (best is None or score > best[0]):
+                best = (score, sentence)
+        if best:
+            picks.append((best[0], label, best[1]))
+    if not picks:
+        return "NOT_FOUND The provided sources do not mention this."
+    picks.sort(key=lambda p: -p[0])
+    return " ".join(f"{sentence.rstrip('.')}. [{label}]" for _, label, sentence in picks[:2])
+
+
+def _scripted_reply(prompt: str) -> str | None:
+    """Stub replies for the pipeline's other prompts, so a zero-setup run is quiet."""
+    if "Rewrite the user's latest question" in prompt and (m := _QUESTION_TAG.search(prompt)):
+        return json.dumps({"query": m.group(1).strip()})  # already standalone: unchanged
+    if "Reply with the updated summary only." in prompt:
+        recent = prompt.split("New messages:", 1)[-1].replace(
+            "Reply with the updated summary only.", ""
+        )
+        return " ".join(recent.split())[:400]
+    return _extractive_answer(prompt)
+
+
 class FakeLLM(LLM):
-    """Echoes the last user message. Not an intelligence; a stand-in for wiring checks."""
+    """Echoes the last user message, except that it answers grounded-answer prompts extractively
+    and plays along with the rewrite and summary prompts. Not an intelligence; a stand-in for
+    wiring checks and zero-setup demos."""
 
     name = "fake"
 
@@ -41,14 +93,28 @@ class FakeLLM(LLM):
         self._reply = reply
         self.calls: list[list[ChatMessage]] = []
 
+    def _text(self, messages: list[ChatMessage]) -> str:
+        if self._reply is not None:
+            return self._reply
+        last_user = next((m.content for m in reversed(messages) if m.role == "user"), "")
+        scripted = _scripted_reply(last_user)
+        return scripted if scripted is not None else f"[fake-llm] You said: {last_user}"
+
     async def complete(
         self, messages: list[ChatMessage], *, temperature: float = 0.2, max_tokens: int = 1024
     ) -> LLMResponse:
         self.calls.append(messages)
-        last_user = next((m.content for m in reversed(messages) if m.role == "user"), "")
-        text = self._reply if self._reply is not None else f"[fake-llm] You said: {last_user}"
+        text = self._text(messages)
         prompt = sum(len(tokenize(m.content)) for m in messages)
         return LLMResponse(text, self.model, Usage(prompt, len(tokenize(text))))
+
+    async def stream(
+        self, messages: list[ChatMessage], *, temperature: float = 0.2, max_tokens: int = 1024
+    ) -> AsyncIterator[StreamChunk]:
+        response = await self.complete(messages, temperature=temperature, max_tokens=max_tokens)
+        for piece in re.findall(r"\S+\s*|\s+", response.text):
+            yield StreamChunk(piece)
+        yield StreamChunk(usage=response.usage)
 
 
 class FakeEmbedder(Embedder):
