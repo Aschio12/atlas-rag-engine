@@ -29,7 +29,7 @@ class AnthropicLLM(LLM):
         self, messages: list[ChatMessage], *, temperature: float = 0.2, max_tokens: int = 1024
     ) -> LLMResponse:
         # The Messages API takes the system prompt as a separate field.
-        system = "\n\n".join(m.content for m in messages if m.role == "system")
+        system_messages = [m for m in messages if m.role == "system"]
         turns = [{"role": m.role, "content": m.content} for m in messages if m.role != "system"]
         body: dict = {
             "model": self.model,
@@ -37,8 +37,15 @@ class AnthropicLLM(LLM):
             "temperature": temperature,
             "messages": turns,
         }
-        if system:
-            body["system"] = system
+        if any(m.cache for m in system_messages):
+            # Block form lets us attach cache_control to the shared prefix (prompt caching).
+            body["system"] = [
+                {"type": "text", "text": m.content}
+                | ({"cache_control": {"type": "ephemeral"}} if m.cache else {})
+                for m in system_messages
+            ]
+        elif system_messages:
+            body["system"] = "\n\n".join(m.content for m in system_messages)
         resp = await post_json(
             self._client,
             self.name,
@@ -54,5 +61,11 @@ class AnthropicLLM(LLM):
             raise ProviderError(self.name, "unexpected response shape") from exc
         usage = data.get("usage") or {}
         return LLMResponse(
-            text, self.model, Usage(usage.get("input_tokens", 0), usage.get("output_tokens", 0))
+            text,
+            self.model,
+            Usage(
+                usage.get("input_tokens", 0),
+                usage.get("output_tokens", 0),
+                usage.get("cache_read_input_tokens", 0),
+            ),
         )

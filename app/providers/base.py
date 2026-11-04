@@ -15,12 +15,16 @@ from app.providers.errors import ProviderError
 class ChatMessage:
     role: Literal["system", "user", "assistant"]
     content: str
+    # Mark a large, reusable prefix (e.g. a whole document that many requests share) so providers
+    # that support prompt caching can bill it once. Others ignore the flag.
+    cache: bool = False
 
 
 @dataclass(frozen=True)
 class Usage:
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    cached_tokens: int = 0  # prompt tokens served from the provider's prompt cache
 
 
 @dataclass(frozen=True)

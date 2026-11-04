@@ -54,7 +54,11 @@ class OpenAILLM(LLM):
         return LLMResponse(
             text,
             self.model,
-            Usage(usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)),
+            Usage(
+                usage.get("prompt_tokens", 0),
+                usage.get("completion_tokens", 0),
+                (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0),
+            ),
         )
 
 
