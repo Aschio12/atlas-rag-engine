@@ -24,10 +24,12 @@ from app.core.errors import (
 )
 from app.db.models import Collection, Document, DocumentStatus, IngestJob, JobState
 from app.ingest import keys
+from app.ingest.attributes import Attributes, validate_attributes
 from app.ingest.fetch import FetchError
 from app.ingest.parsers import ParsedDocument
 from app.ingest.purge import purge_document
 from app.ingest.service import create_document
+from app.ingest.vectors import vector_collection
 from app.storage import BlobNotFound
 
 log = logging.getLogger("atlas.documents")
@@ -61,6 +63,7 @@ class DocumentOut(BaseModel):
     content_hash: str
     status: DocumentStatus
     metadata: dict[str, Any]
+    attributes: dict[str, Any]
     job: JobBrief | None = None
     created_at: datetime
     updated_at: datetime
@@ -75,6 +78,9 @@ class TextDocumentCreate(BaseModel):
     title: str = Field(min_length=1, max_length=500, examples=["Refund policy"])
     text: str = Field(min_length=1, max_length=MAX_TEXT_CHARS)
     format: Literal["text", "markdown"] = "text"
+    attributes: Attributes = Field(
+        default_factory=dict, examples=[{"year": 2024, "tags": ["policy"]}]
+    )
 
     @field_validator("title")
     @classmethod
@@ -95,6 +101,21 @@ class TextDocumentCreate(BaseModel):
 class UrlDocumentCreate(BaseModel):
     url: str = Field(min_length=1, max_length=2000, examples=["https://example.com/docs/faq.html"])
     title: str | None = Field(default=None, max_length=500)
+    attributes: Attributes = Field(default_factory=dict)
+
+
+class DocumentPatch(BaseModel):
+    """Fields to change; omitted ones are kept. `attributes` replaces the whole map."""
+
+    title: str | None = Field(default=None, min_length=1, max_length=500)
+    attributes: Attributes | None = None
+
+    @field_validator("title")
+    @classmethod
+    def _title(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            raise ValueError("must not be blank")
+        return v.strip() if v else v
 
 
 def to_out(d: Document, job: IngestJob | None = None) -> DocumentOut:
@@ -111,6 +132,7 @@ def to_out(d: Document, job: IngestJob | None = None) -> DocumentOut:
         content_hash=d.content_hash,
         status=d.status,
         metadata=meta,
+        attributes=d.attributes or {},
         job=JobBrief.model_validate(job, from_attributes=True) if job else None,
         created_at=d.created_at,
         updated_at=d.updated_at,
@@ -178,6 +200,17 @@ async def read_limited(file: UploadFile, limit: int) -> bytes:
     return bytes(buf)
 
 
+def _parse_attributes_form(raw: str | None) -> dict[str, Any]:
+    if not raw or not raw.strip():
+        return {}
+    try:
+        return validate_attributes(json.loads(raw))
+    except json.JSONDecodeError:
+        raise BadRequest("attributes must be a JSON object") from None
+    except ValueError as e:
+        raise BadRequest(str(e)) from None
+
+
 @router.post("", status_code=201, response_model=DocumentOut)
 async def upload_document(
     request: Request,
@@ -188,8 +221,13 @@ async def upload_document(
     blobs: BlobsDep,
     file: Annotated[UploadFile, File(description="PDF, DOCX, PPTX, HTML, Markdown, CSV or text")],
     title: Annotated[str | None, Form(max_length=500)] = None,
+    attributes: Annotated[
+        str | None,
+        Form(description='JSON object, e.g. {"year": 2024, "author": "Chen", "tags": ["rag"]}'),
+    ] = None,
 ):
     collection = await get_collection(session, access.workspace.id, collection_id)
+    parsed_attributes = _parse_attributes_form(attributes)
     data = await read_limited(file, settings.max_upload_bytes)
     doc, job = await create_document(
         session,
@@ -200,6 +238,7 @@ async def upload_document(
         content_type=file.content_type,
         source_type="file",
         title=title,
+        attributes=parsed_attributes,
     )
     request.app.state.worker.wake()
     return to_out(doc, job)
@@ -229,6 +268,7 @@ async def create_text_document(
         content_type=None,
         source_type="text",
         title=body.title,
+        attributes=body.attributes,
     )
     request.app.state.worker.wake()
     return to_out(doc, job)
@@ -264,6 +304,7 @@ async def create_url_document(
         source_type="url",
         source_uri=fetched.url,
         title=body.title or (None if fetched.filename else urlsplit(fetched.url).hostname),
+        attributes=body.attributes,
     )
     request.app.state.worker.wake()
     return to_out(doc, job)
@@ -395,6 +436,37 @@ async def download_original(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+@router.patch("/{document_id}", response_model=DocumentOut)
+async def update_document(
+    request: Request,
+    collection_id: uuid.UUID,
+    document_id: uuid.UUID,
+    body: DocumentPatch,
+    access: MemberAccess,
+    session: SessionDep,
+):
+    """Rename a document or replace its attributes. The vector index is updated in place, so the
+    change is searchable at once and nothing is re-embedded."""
+    collection = await get_collection(session, access.workspace.id, collection_id)
+    doc = await get_document(session, collection, document_id)
+    changes: dict[str, Any] = {}
+    if body.title is not None and body.title != doc.title:
+        changes["title"] = body.title
+    if body.attributes is not None and body.attributes != (doc.attributes or {}):
+        changes["attributes"] = body.attributes
+    if changes:
+        # Index first: if the vector store is down this is a 502 and nothing changed anywhere.
+        await request.app.state.providers.vector_store.set_payload(
+            vector_collection(collection.id), changes, filters={"document_id": str(doc.id)}
+        )
+        for field, value in changes.items():
+            setattr(doc, field, value)
+        await session.commit()
+        await session.refresh(doc)
+    jobs = await latest_jobs(session, [doc.id])
+    return to_out(doc, jobs.get(doc.id))
 
 
 @router.delete("/{document_id}", status_code=204)

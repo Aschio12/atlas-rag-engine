@@ -75,5 +75,6 @@ def base_payload(collection: Collection, document: Document, chunk: Chunk, versi
         "source_id": str(document.source_id) if document.source_id else None,
         "file_type": (document.meta or {}).get("kind"),
         "created_at": epoch_seconds(document.created_at),
+        "attributes": document.attributes or {},
         "index_version": version,
     }

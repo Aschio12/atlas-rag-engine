@@ -41,6 +41,7 @@ async def create_document(
     title: str | None = None,
     extra_meta: dict[str, Any] | None = None,
     source_id: uuid.UUID | None = None,
+    attributes: dict[str, Any] | None = None,
 ) -> tuple[Document, IngestJob]:
     """Validate, deduplicate, store the original and insert the document row."""
     # Plain values up front: a rollback expires ORM objects and async sessions cannot lazy-load.
@@ -66,6 +67,7 @@ async def create_document(
         size_bytes=len(data),
         status=DocumentStatus.PENDING,
         source_id=source_id,
+        attributes=attributes or {},
         meta={
             "filename": safe_name,
             "content_type": (content_type or "").split(";")[0].strip().lower() or None,

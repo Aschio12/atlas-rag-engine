@@ -167,6 +167,8 @@ class Document(IdMixin, TimestampMixin, Base):
         _enum(DocumentStatus), default=DocumentStatus.PENDING
     )
     meta: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    # User-defined attributes (year, author, tags, ...), searchable as filters (Phase 3.7).
+    attributes: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'"))
     # The source that produced this document, if any (kept when the source is deleted).
     source_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("sources.id", ondelete="SET NULL"), index=True
