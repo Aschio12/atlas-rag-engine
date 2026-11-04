@@ -7,6 +7,7 @@ from app.api import (
     auth,
     chunks,
     collections,
+    conversations,
     documents,
     jobs,
     memory,
@@ -34,3 +35,4 @@ router.include_router(retrievals.router)
 router.include_router(answer.router)
 router.include_router(policy.router)
 router.include_router(memory.router)
+router.include_router(conversations.router)
