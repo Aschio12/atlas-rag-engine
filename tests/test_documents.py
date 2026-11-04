@@ -255,7 +255,7 @@ async def test_documents_are_counted_on_the_collection(client, space):
 
 async def test_losing_a_duplicate_race_cleans_up_and_returns_409(client, app, space, monkeypatch):
     """Two identical uploads pass the pre-check together; the unique constraint settles it."""
-    from app.api import documents
+    from app.ingest import service as documents
 
     first = (await client.post(space["url"], files=_file(), headers=space["headers"])).json()
     real = documents._find_by_hash

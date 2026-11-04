@@ -12,32 +12,23 @@ from urllib.parse import quote, urlsplit
 from fastapi import APIRouter, File, Form, Query, Request, Response, UploadFile
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import MemberAccess, ViewerAccess
 from app.core.deps import BlobsDep, SessionDep, SettingsDep
 from app.core.errors import (
     BadRequest,
-    Conflict,
     NotFound,
     PayloadTooLarge,
-    UnsupportedMedia,
     UpstreamError,
 )
 from app.db.models import Collection, Document, DocumentStatus, IngestJob, JobState
-from app.ingest import keys, queue
+from app.ingest import keys
 from app.ingest.fetch import FetchError
-from app.ingest.files import (
-    UnsupportedFile,
-    detect_kind,
-    sanitize_filename,
-    sha256_hex,
-    title_from_filename,
-)
 from app.ingest.parsers import ParsedDocument
 from app.ingest.purge import purge_document
-from app.storage import BlobNotFound, BlobStore
+from app.ingest.service import create_document
+from app.storage import BlobNotFound
 
 log = logging.getLogger("atlas.documents")
 
@@ -185,89 +176,6 @@ async def read_limited(file: UploadFile, limit: int) -> bytes:
         if len(buf) > limit:
             raise PayloadTooLarge(f"The file is larger than the {limit // (1024 * 1024)} MB limit")
     return bytes(buf)
-
-
-async def create_document(
-    session: AsyncSession,
-    blobs: BlobStore,
-    collection: Collection,
-    *,
-    data: bytes,
-    filename: str | None,
-    content_type: str | None,
-    source_type: str,
-    source_uri: str | None = None,
-    title: str | None = None,
-    extra_meta: dict[str, Any] | None = None,
-) -> tuple[Document, IngestJob]:
-    """Validate, deduplicate, store the original and insert the document row."""
-    # Plain values up front: a rollback expires ORM objects and async sessions cannot lazy-load.
-    collection_id, workspace_id = collection.id, collection.workspace_id
-    try:
-        kind = detect_kind(data, filename, content_type)
-    except UnsupportedFile as e:
-        raise UnsupportedMedia(str(e)) from None
-
-    content_hash = sha256_hex(data)
-    existing = await _find_by_hash(session, collection_id, content_hash)
-    if existing is not None:
-        raise _duplicate(existing.id, existing.title)
-
-    safe_name = sanitize_filename(filename) if filename else None
-    doc = Document(
-        id=uuid.uuid4(),
-        collection_id=collection_id,
-        title=(title or "").strip() or title_from_filename(safe_name or "Untitled"),
-        source_type=source_type,
-        source_uri=source_uri,
-        content_hash=content_hash,
-        size_bytes=len(data),
-        status=DocumentStatus.PENDING,
-        meta={
-            "filename": safe_name,
-            "content_type": (content_type or "").split(";")[0].strip().lower() or None,
-            "kind": kind.value,
-            **(extra_meta or {}),
-        },
-    )
-    folder = keys.document_prefix(workspace_id, collection_id, doc.id)
-    await blobs.put(keys.original_key(workspace_id, collection_id, doc.id), data)
-    try:
-        session.add(doc)
-        await session.flush()  # the document row must exist before its job references it
-        job = await queue.enqueue(session, doc.id)
-        await session.commit()
-    except IntegrityError:
-        # Lost a race with an identical upload: the unique (collection, hash) constraint held.
-        await session.rollback()
-        await blobs.delete_prefix(folder)
-        row = await _find_by_hash(session, collection_id, content_hash)
-        if row is None:
-            raise
-        raise _duplicate(row.id, row.title) from None
-    except BaseException:
-        await blobs.delete_prefix(folder)
-        raise
-    await session.refresh(doc)
-    await session.refresh(job)
-    return doc, job
-
-
-async def _find_by_hash(session: AsyncSession, collection_id: uuid.UUID, content_hash: str):
-    return (
-        await session.execute(
-            select(Document.id, Document.title).where(
-                Document.collection_id == collection_id, Document.content_hash == content_hash
-            )
-        )
-    ).first()
-
-
-def _duplicate(existing_id: uuid.UUID, title: str) -> Conflict:
-    return Conflict(
-        f"This content is already in the collection as '{title}'",
-        extra={"existing_document_id": str(existing_id)},
-    )
 
 
 @router.post("", status_code=201, response_model=DocumentOut)
