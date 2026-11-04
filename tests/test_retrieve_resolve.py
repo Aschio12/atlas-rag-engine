@@ -4,16 +4,9 @@ from types import SimpleNamespace
 import pytest
 
 from app.providers.base import ScoredPoint
-from app.retrieve.dense import (
-    MAX_FETCH,
-    MIN_FETCH,
-    OVERFETCH,
-    Candidate,
-    DenseRetriever,
-    collapse,
-    fetch_size,
-    is_current,
-)
+from app.retrieve.candidates import MAX_FETCH, OVERFETCH, Candidate, fetch_size
+from app.retrieve.pipeline import RetrievalPipeline
+from app.retrieve.resolve import collapse, is_current, resolve
 from app.retrieve.types import RetrievalTrace
 
 
@@ -23,7 +16,6 @@ def cand(chunk, score, *, pid=None, col=None, **payload):
 
 
 def test_fetch_size_overfetches_within_bounds():
-    assert fetch_size(1) == MIN_FETCH
     assert fetch_size(10) == 10 * OVERFETCH
     assert fetch_size(50) == 50 * OVERFETCH
     assert fetch_size(10_000) == MAX_FETCH
@@ -67,10 +59,10 @@ def test_a_point_is_current_only_when_its_chunk_exists_in_its_collection_at_that
 
 
 async def test_searching_collections_of_another_workspace_is_a_programming_error():
-    retriever = DenseRetriever(session=None, providers=None)
+    pipeline = RetrievalPipeline(session=None, providers=None)
     foreign = SimpleNamespace(workspace_id=uuid.uuid4())
     with pytest.raises(ValueError, match="belong to the workspace"):
-        await retriever.search("q", uuid.uuid4(), [foreign])
+        await pipeline.run("q", uuid.uuid4(), [foreign])
 
 
 def test_a_trace_records_stage_timings():
@@ -79,3 +71,14 @@ def test_a_trace_records_stage_timings():
     trace = RetrievalTrace("q")
     stage = trace.add("step", time.perf_counter(), count=3)
     assert trace.stages == [stage] and stage.details == {"count": 3} and stage.took_ms >= 0
+
+
+def test_resolve_drops_unservable_points_before_collapsing_the_rest():
+    col = SimpleNamespace(id=uuid.uuid4())
+    chunk = uuid.uuid4()
+    stale_question = cand(chunk, 0.99, pid="q", col=col, kind="question", index_version="old")
+    own = cand(chunk, 0.5, col=col, index_version="v2")
+    ghost = cand(uuid.uuid4(), 0.8, col=col, index_version="v2")
+    kept, stats = resolve([stale_question, own, ghost], {chunk: row(col.id, "v2")})
+    assert kept == [own]  # the stale point did not shadow the valid one
+    assert stats == {"missing": 1, "stale": 1, "folded_into_chunk": 0}

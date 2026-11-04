@@ -13,7 +13,6 @@ from app.core.auth import ViewerAccess
 from app.core.deps import SessionDep
 from app.core.errors import NotFound
 from app.db.models import Collection
-from app.retrieve.dense import DenseRetriever
 from app.retrieve.filters import (
     FIELDS,
     MAX_CONDITIONS,
@@ -22,12 +21,13 @@ from app.retrieve.filters import (
     MetadataFilter,
     compile_filters,
 )
+from app.retrieve.options import RetrievalOptions
+from app.retrieve.pipeline import RetrievalPipeline
 from app.retrieve.types import Hit, RetrievalTrace
 
 router = APIRouter(tags=["search"])
 
 MAX_QUERY_CHARS = 2000
-MAX_TOP_K = 50
 MAX_COLLECTIONS = 50
 
 Query = Annotated[
@@ -35,15 +35,10 @@ Query = Annotated[
 ]
 
 
-class SearchRequest(BaseModel):
+class SearchRequest(RetrievalOptions):
     query: Query
-    mode: Literal["dense"] = Field("dense", description="Retrieval method (more arrive in 3.2+)")
     collection_ids: list[uuid.UUID] | None = Field(
         None, max_length=MAX_COLLECTIONS, description="Search only these; default: all of them"
-    )
-    top_k: int = Field(10, ge=1, le=MAX_TOP_K)
-    min_score: float | None = Field(
-        None, ge=-1, le=1, description="Drop passages less similar than this (cosine)"
     )
     filters: list[MetadataFilter] = Field(
         default_factory=list, max_length=MAX_CONDITIONS, description="All must hold"
@@ -137,14 +132,13 @@ async def search(body: SearchRequest, access: ViewerAccess, session: SessionDep,
     the ones named), narrowed by optional metadata filters. Each hit carries its scores and the
     reasons it was chosen; `trace` shows what every stage did."""
     collections = await _collections(session, access.workspace.id, body.collection_ids)
-    retriever = DenseRetriever(session, request.app.state.providers)
-    result = await retriever.search(
+    pipeline = RetrievalPipeline(session, request.app.state.providers)
+    result = await pipeline.run(
         body.query,
         access.workspace.id,
         collections,
-        top_k=body.top_k,
-        min_score=body.min_score,
-        metadata=compile_filters(body.filters) if body.filters else CompiledFilter(),
+        RetrievalOptions(**body.model_dump(include=set(RetrievalOptions.model_fields))),
+        compile_filters(body.filters) if body.filters else CompiledFilter(),
     )
     return SearchOut(
         query=body.query,

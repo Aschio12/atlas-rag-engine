@@ -1,11 +1,19 @@
 """Dense retrieval through the API: documents are ingested by the real worker pipeline into the
 in-memory vector store, then searched."""
 
-import io
 import json
 import uuid
 
 import pytest
+from search_helpers import (
+    PASTA,
+    RECIPES,
+    REFUND,
+    find,
+    ingest,
+    make_collection,
+    search_url,
+)
 from sqlalchemy import select
 
 from app.db.models import Chunk, Role, User, WorkspaceMember
@@ -13,62 +21,6 @@ from app.ingest.vectors import vector_collection
 from app.providers.base import Point
 from app.providers.errors import ProviderError
 from app.providers.fake import FakeEmbedder, FakeLLM
-
-SMALL = {"target_tokens": 64, "overlap_tokens": 8, "max_tokens": 128}
-PASTA = "Boil salted water, cook the spaghetti for nine minutes and toss with garlic and olive oil"
-REFUND = "Refunds are issued within 14 days of purchase to the original payment method"
-SHIPPING = "Orders ship from the warehouse in Rotterdam within two business days"
-FILLER = " ".join(f"Detail {i} is handled by the customer care team." for i in range(8))
-POLICY = (
-    "# Policies\n\nThis handbook lists the customer policies.\n\n"
-    f"## Refunds\n\n{REFUND}. {FILLER}\n\n"
-    f"## Shipping\n\n{SHIPPING}. {FILLER}\n\n"
-    f"## Warranty\n\nHardware is covered by a two year limited warranty. {FILLER}"
-)
-RECIPES = (
-    "# Recipes\n\nSimple dishes.\n\n"
-    f"## Pasta\n\n{PASTA}. {FILLER}\n\n"
-    f"## Soup\n\nSimmer onions, carrots and celery with vegetable stock for forty minutes. {FILLER}"
-)
-
-
-def search_url(space):
-    return f"/v1/workspaces/{space['ws']}/search"
-
-
-async def make_collection(client, space, name="docs", **body):
-    r = await client.post(
-        f"/v1/workspaces/{space['ws']}/collections",
-        json={"name": name, "chunking_config": SMALL, **body},
-        headers=space["headers"],
-    )
-    assert r.status_code == 201, r.text
-    cid = r.json()["id"]
-    return cid, f"/v1/workspaces/{space['ws']}/collections/{cid}/documents"
-
-
-async def ingest(client, app, space, url, text=POLICY, name="policy.md"):
-    files = {"file": (name, io.BytesIO(text.encode()), "text/markdown")}
-    r = await client.post(url, files=files, headers=space["headers"])
-    assert r.status_code == 201, r.text
-    while await app.state.worker.run_once():
-        pass
-    return r.json()["id"]
-
-
-async def find(client, space, query, **body):
-    r = await client.post(
-        search_url(space), json={"query": query, **body}, headers=space["headers"]
-    )
-    assert r.status_code == 200, r.text
-    return r.json()
-
-
-@pytest.fixture
-async def indexed(client, app, space):
-    cid, url = await make_collection(client, space)
-    doc_id = await ingest(client, app, space, url)
-    return {**space, "cid": cid, "url": url, "doc": doc_id}
 
 
 async def test_the_best_passage_comes_first_with_everything_needed_to_cite_it(client, indexed):
@@ -80,7 +32,7 @@ async def test_the_best_passage_comes_first_with_everything_needed_to_cite_it(cl
     assert top["title"] == "policy" and top["heading_path"][0] == "Policies"
     assert top["char_end"] > top["char_start"] >= 0 and top["language"] == "en"
     assert top["scores"] == {"dense": top["score"]} and 0.5 < top["score"] <= 1.0001
-    assert top["reasons"][0].startswith("dense cosine similarity")
+    assert top["reasons"][0].startswith("dense: cosine similarity")
     assert out["mode"] == "dense" and out["query"].startswith("Refunds")
 
 
@@ -116,12 +68,12 @@ async def test_the_trace_records_every_stage(client, indexed):
         client, indexed, "shipping", filters=[{"field": "language", "op": "eq", "value": "EN"}]
     )
     stages = {s["name"]: s for s in out["trace"]["stages"]}
-    assert list(stages) == ["scope", "embed_query", "dense_search", "resolve"]
+    assert list(stages) == ["scope", "embed_query", "dense_search", "resolve", "result"]
     assert stages["scope"]["details"]["filters"] == ["language eq 'en'"]
     listed = {c["id"] for c in stages["scope"]["details"]["collections"]}
     assert indexed["cid"] in listed
     assert stages["dense_search"]["details"]["comparable_scores"] is True
-    assert stages["resolve"]["details"]["returned"] == len(out["hits"])
+    assert stages["result"]["details"]["returned"] == len(out["hits"])
     assert all(s["took_ms"] >= 0 for s in stages.values())
 
 
@@ -277,7 +229,7 @@ async def test_another_workspaces_data_is_never_returned_or_addressable(
     # naming someone else's collection looks exactly like naming one that does not exist
     r = await client.post(
         search_url(indexed),
-        json={"query": "x", "collection_ids": [cid]},
+        json={"query": "x", "mode": "dense", "collection_ids": [cid]},
         headers=indexed["headers"],
     )
     assert r.status_code == 404

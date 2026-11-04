@@ -75,3 +75,12 @@ async def space(client, signup):
         "col": col["id"],
         "url": DOCS_URL.format(ws=ws["id"], col=col["id"]),
     }
+
+
+@pytest.fixture
+async def indexed(client, app, space):
+    """A workspace with one collection holding the ingested POLICY document (see
+    search_helpers)."""
+    from search_helpers import build_indexed
+
+    return await build_indexed(client, app, space)
