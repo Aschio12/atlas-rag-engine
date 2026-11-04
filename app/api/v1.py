@@ -9,6 +9,8 @@ from app.api import (
     collections,
     documents,
     jobs,
+    memory,
+    policy,
     providers,
     reindex,
     retrievals,
@@ -30,3 +32,5 @@ router.include_router(sources.router)
 router.include_router(search.router)
 router.include_router(retrievals.router)
 router.include_router(answer.router)
+router.include_router(policy.router)
+router.include_router(memory.router)

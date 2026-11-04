@@ -272,6 +272,7 @@ class AnswerService:
             "model": self._providers.llm.model,
             "warnings": warnings,
             "guardrails": guardrails,
+            "memory": {"facts": len(facts), "summary": bool(summary_text), "turns": len(history)},
         }
 
         # 1. the workspace's rules about what may be asked

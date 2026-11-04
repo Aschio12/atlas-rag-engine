@@ -10,11 +10,13 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
 
+from app.api.memory import load_facts
 from app.api.search import PassageOut
 from app.core.auth import ViewerAccess
 from app.core.deps import SessionDep, SettingsDep
 from app.core.errors import BadRequest
 from app.db.models import Workspace
+from app.generate.memory import facts_for_prompt
 from app.generate.options import AnswerOptions
 from app.generate.policy import WorkspacePolicy
 from app.generate.service import AnswerService
@@ -94,6 +96,7 @@ class AnswerOut(BaseModel):
     model: str
     usage: dict[str, Any]
     warnings: list[str]
+    memory: dict[str, Any] = Field(description="What the prompt carried: facts, summary, turns")
     retrieval_trace: dict[str, Any] | None
 
 
@@ -136,13 +139,20 @@ async def answer(
     service = AnswerService(request.app.state.providers, request.app.state.blobs, settings)
     workspace_id = access.workspace.id
     options = AnswerOptions(**body.model_dump(include=set(AnswerOptions.model_fields)))
+    facts = facts_for_prompt(await load_facts(session, workspace_id), settings.memory_max_facts)
     prepared = await service.prepare(
         session, workspace_id, options, policy, has_history=bool(body.history)
     )
     if not body.stream:
         done = None
         async for event in service.run(
-            session, workspace_id, body.question, prepared, policy, history=body.history
+            session,
+            workspace_id,
+            body.question,
+            prepared,
+            policy,
+            history=body.history,
+            facts=facts,
         ):
             if event.name == "error":
                 raise to_exception(event.data)
@@ -160,7 +170,7 @@ async def answer(
                 own, workspace_id, options, policy, has_history=bool(body.history)
             )
             async for event in service.run(
-                own, workspace_id, body.question, ready, policy, history=body.history
+                own, workspace_id, body.question, ready, policy, history=body.history, facts=facts
             ):
                 yield event.sse()
 
