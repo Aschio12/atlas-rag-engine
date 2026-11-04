@@ -13,9 +13,9 @@ import uuid
 import pytest
 
 from app.ingest.sparse import encode_document, encode_query
-from app.providers.base import Point
+from app.providers.base import Point, Range
 from app.providers.fake import FakeEmbedder
-from app.providers.qdrant import QdrantStore
+from app.providers.qdrant import INDEXED_FIELDS, QdrantStore
 
 URL = os.environ.get("ATLAS_TEST_QDRANT_URL")
 pytestmark = pytest.mark.skipif(not URL, reason="set ATLAS_TEST_QDRANT_URL to run")
@@ -104,3 +104,94 @@ async def test_dimension_and_sparse_mismatches_are_reported(store):
         await s.ensure_collection(name, 64)
     with pytest.raises(ProviderError, match="without sparse"):
         await s.ensure_collection(name, 32, sparse=True)
+
+
+ATTRS = {
+    "refunds": {
+        "language": "en", "page": 1, "source_type": "file", "heading_path": ["Terms", "Refunds"]
+    },
+    "shipping": {"language": "en", "page": 4, "source_type": "web", "heading_path": ["Shipping"]},
+    "support": {"language": "de", "page": 9, "source_type": "file", "heading_path": []},
+}  # fmt: skip
+
+
+async def load_attributed(s, name):
+    emb = FakeEmbedder(dimension=32)
+    vectors = await emb.embed(list(DOCS.values()))
+    await s.ensure_collection(name, 32, sparse=True)
+    await s.upsert(
+        name,
+        [
+            Point(
+                str(uuid.uuid4()), vec,
+                {"key": k, "kind": "chunk", "created_at": 1_700_000_000 + i, **ATTRS[k]},
+                encode_document(text),
+            )
+            for i, ((k, text), vec) in enumerate(zip(DOCS.items(), vectors, strict=True))
+        ],
+    )  # fmt: skip
+    return emb
+
+
+def keys(hits):
+    return sorted(h.payload["key"] for h in hits)
+
+
+async def test_metadata_filters_any_of_range_array_and_exclusion(store):
+    s, name = store
+    emb = await load_attributed(s, name)
+    (q,) = await emb.embed(["anything at all"])
+
+    async def run(**kw):
+        return keys(await s.search(name, q, limit=10, **kw))
+
+    assert await run(filters={"language": "en"}) == ["refunds", "shipping"]
+    assert await run(filters={"language": ["de", "en"]}) == ["refunds", "shipping", "support"]
+    assert await run(filters={"page": Range(gte=2, lte=9)}) == ["shipping", "support"]
+    assert await run(filters={"page": Range(gt=1, lt=9)}) == ["shipping"]
+    assert await run(filters={"created_at": Range(gte=1_700_000_001)}) == ["shipping", "support"]
+    assert await run(filters={"heading_path": "Refunds"}) == ["refunds"]  # array: any element
+    assert await run(filters={"heading_path": ["Shipping", "Terms"]}) == ["refunds", "shipping"]
+    assert await run(exclude={"source_type": "web"}) == ["refunds", "support"]
+    assert await run(exclude={"language": "de", "page": Range(lte=1)}) == ["shipping"]
+    assert await run(filters={"language": "en"}, exclude={"source_type": "web"}) == ["refunds"]
+
+
+async def test_sparse_search_honours_filters_and_exclusions(store):
+    s, name = store
+    await load_attributed(s, name)
+    query = encode_query("refund shipping support parcels weekday")
+    hits = await s.sparse_search(
+        name, query, limit=10, filters={"language": "en"}, exclude={"source_type": "web"}
+    )
+    assert keys(hits) == ["refunds"]
+
+
+async def test_searching_a_collection_that_does_not_exist_finds_nothing(store):
+    s, _ = store
+    ghost = f"atlas_test_missing_{uuid.uuid4().hex}"
+    assert await s.search(ghost, [0.0] * 32, limit=3) == []
+    assert await s.sparse_search(ghost, encode_query("anything"), limit=3) == []
+
+
+async def test_collections_made_before_a_field_was_indexed_gain_its_index(store):
+    s, name = store
+    # an "old" collection: right vectors, but only the original payload indexes
+    await s._call(
+        "PUT",
+        f"/collections/{name}",
+        json={
+            "vectors": {"dense": {"size": 32, "distance": "Cosine"}},
+            "sparse_vectors": {"sparse": {"modifier": "idf"}},
+        },
+    )
+    await s._call(
+        "PUT",
+        f"/collections/{name}/index?wait=true",
+        json={"field_name": "workspace_id", "field_schema": "keyword"},
+    )
+    await s.ensure_collection(name, 32, sparse=True)
+    info = await s._call("GET", f"/collections/{name}")
+    assert set(INDEXED_FIELDS) <= set(info.json()["result"]["payload_schema"])
+    schema = info.json()["result"]["payload_schema"]
+    assert schema["page"]["data_type"] == "integer" and schema["language"]["data_type"] == "keyword"
