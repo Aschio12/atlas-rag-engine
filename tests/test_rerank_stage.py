@@ -29,7 +29,8 @@ class Scripted(Reranker):
 
 def hit(text, rank, title="T", heading=("H",)):
     return Hit(
-        chunk_id=uuid.uuid4(), document_id=uuid.uuid4(), collection_id=uuid.uuid4(), rank=rank,
+        chunk_id=uuid.uuid4(), document_id=uuid.uuid4(), collection_id=uuid.uuid4(),
+        rank=rank, ordinal=0,
         score=1.0 / rank, text=text, title=title, page=None, char_start=0, char_end=len(text),
         heading_path=list(heading), parent_id=None, language="en", source_uri=None,
         matched="chunk", scores={"rrf": 1.0 / rank}, reasons=["fused"],

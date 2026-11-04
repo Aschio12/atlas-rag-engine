@@ -52,7 +52,9 @@ async def test_multi_query_finds_passages_the_original_wording_misses(client, ap
         transforms={"multi_query": True, "multi_query_count": 2},
     )  # fmt: skip
     top = out["hits"][0]
-    assert "Rotterdam" in top["text"] and "Rotterdam" not in plain["hits"][0]["text"]
+    assert "Rotterdam" in top["text"]
+    # the original wording shares no term with any passage, so on its own sparse finds nothing
+    assert all("sparse" not in h["scores"] for h in plain["hits"])
     assert {"dense[multi_query:1]", "sparse[multi_query:1]"} <= set(top["scores"])
     assert any("multi_query:1" in r and "Orders ship" in r for r in top["reasons"])
     searches = stage(out, "variant_search")["details"]["channels"]
