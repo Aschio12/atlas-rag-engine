@@ -67,6 +67,8 @@ async def parse_stage(ctx: StageContext) -> None:
     except ParseError as e:
         raise PermanentError(str(e)) from None
 
+    if meta.get("title_provisional") and parsed.title:
+        doc.title = parsed.title[:500]  # a crawled page or repo doc is titled by its own title
     payload = json.dumps(parsed.to_dict(), ensure_ascii=False).encode("utf-8")
     await ctx.blobs.put(keys.parsed_key(col.workspace_id, col.id, doc.id), payload)
     doc.meta = {**meta, "parse": parsed.summary()}  # new dict so the JSON column is saved

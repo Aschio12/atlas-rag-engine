@@ -9,6 +9,7 @@ from app.core.logging import setup_logging
 from app.core.middleware import RequestContextMiddleware
 from app.db.session import make_engine, make_sessionmaker
 from app.ingest.fetch import fetch_url
+from app.ingest.sources import SyncRunner
 from app.ingest.worker import Worker
 from app.providers.registry import Providers
 from app.storage import LocalBlobStore
@@ -25,10 +26,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     worker = Worker(sessionmaker, settings, blobs, providers)
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI):
+    async def lifespan(app: FastAPI):
+        await app.state.sync_runner.recover()  # syncs cut short by the last shutdown
         if settings.worker_enabled:
             worker.start()
         yield
+        await app.state.sync_runner.shutdown()
         await worker.stop()
         await providers.aclose()
         await engine.dispose()
@@ -41,6 +44,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.worker = worker
     app.state.fetch_url = fetch_url  # replaced in tests
     app.state.sessionmaker = sessionmaker
+    app.state.sync_runner = SyncRunner(app)
 
     app.add_middleware(RequestContextMiddleware)
     install_error_handlers(app)

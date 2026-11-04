@@ -60,3 +60,31 @@ async def purge_collection(providers: Providers, collection_id: uuid.UUID) -> No
     await providers.vector_store.drop_collection(vector_collection(collection_id))
     for hook in list(_collection_hooks):
         await hook(collection_id)
+
+
+async def delete_documents(
+    session,
+    providers: Providers,
+    blobs,
+    collection,
+    document_ids: list[uuid.UUID],
+) -> int:
+    """Delete several documents completely: vectors and hooks first, then the rows, then files.
+
+    One document at a time, committing each, so an outage part-way leaves a consistent
+    database (the remaining documents are simply still there)."""
+    from sqlalchemy import delete
+
+    from app.db.models import Document
+    from app.ingest import keys
+
+    removed = 0
+    for doc_id in document_ids:
+        await purge_document(providers, collection.id, doc_id)
+        await session.execute(delete(Document).where(Document.id == doc_id))
+        await session.commit()
+        await blobs.delete_prefix(
+            keys.document_prefix(collection.workspace_id, collection.id, doc_id)
+        )
+        removed += 1
+    return removed
