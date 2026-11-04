@@ -42,6 +42,12 @@ async def parse_stage(ctx: StageContext) -> None:
     Idempotent: running it again overwrites both.
     """
     doc, col = ctx.document, ctx.collection
+    if ctx.options.get("reparse") is False and await ctx.blobs.exists(
+        keys.parsed_key(col.workspace_id, col.id, doc.id)
+    ):
+        # A re-index with unchanged text: reuse the stored parse instead of re-running OCR/PDF work.
+        log.info("reusing stored parse", extra={"document_id": str(doc.id)})
+        return
     try:
         data = await ctx.blobs.get(keys.original_key(col.workspace_id, col.id, doc.id))
     except BlobNotFound:
