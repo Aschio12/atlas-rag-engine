@@ -264,3 +264,27 @@ async def test_collections_created_before_the_column_existed_report_defaults(cli
         await s.commit()
     r = await client.get(f"/v1/workspaces/{ws}/collections/{col['id']}", headers=h)
     assert r.json()["chunking_config"]["target_tokens"] == 400
+
+
+async def test_enrichment_defaults_are_free_local_enrichers_only(client, signup):
+    h = await signup()
+    ws = (await client.post("/v1/workspaces", json={"name": "W"}, headers=h)).json()["id"]
+    r = await client.post(f"/v1/workspaces/{ws}/collections", json={"name": "C"}, headers=h)
+    e = r.json()["enrichment"]
+    assert (e["language"], e["keywords"]) == (True, True)
+    assert (e["summaries"], e["questions"]) == (False, False)  # LLM enrichers are opt-in
+
+
+async def test_enrichment_can_be_customised_and_is_validated(client, signup):
+    h = await signup()
+    ws = (await client.post("/v1/workspaces", json={"name": "W"}, headers=h)).json()["id"]
+    body = {"name": "C", "enrichment": {"summaries": True, "questions": True, "max_questions": 5}}
+    r = await client.post(f"/v1/workspaces/{ws}/collections", json=body, headers=h)
+    assert r.status_code == 201
+    assert r.json()["enrichment"]["questions"] is True
+    assert r.json()["enrichment"]["max_questions"] == 5
+    for bad in ({"max_questions": 0}, {"max_chunks": 0}, {"concurrency": 99}, {"nope": 1}):
+        r = await client.post(
+            f"/v1/workspaces/{ws}/collections", json={"name": "X", "enrichment": bad}, headers=h
+        )
+        assert r.status_code == 422, bad
