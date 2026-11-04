@@ -133,7 +133,11 @@ async def create_source(
         )
     if isinstance(body, WebSourceCreate):
         try:  # refuse internal addresses now, not minutes later in the background
-            await validate_url(body.config.url, allow_private=settings.allow_private_urls)
+            await validate_url(
+                body.config.url,
+                allow_private=settings.allow_private_urls,
+                resolver=request.app.state.url_resolver,
+            )
         except FetchError as e:
             raise BadRequest(str(e)) from None
     name = (body.name or "").strip() or _default_name(body)

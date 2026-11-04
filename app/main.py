@@ -8,7 +8,7 @@ from app.core.errors import install_error_handlers
 from app.core.logging import setup_logging
 from app.core.middleware import RequestContextMiddleware
 from app.db.session import make_engine, make_sessionmaker
-from app.ingest.fetch import fetch_url
+from app.ingest.fetch import fetch_url, system_resolver
 from app.ingest.sources import SyncRunner
 from app.ingest.worker import Worker
 from app.providers.registry import Providers
@@ -43,6 +43,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.blobs = blobs
     app.state.worker = worker
     app.state.fetch_url = fetch_url  # replaced in tests
+    app.state.url_resolver = system_resolver  # replaced in tests (no real DNS)
     app.state.sessionmaker = sessionmaker
     app.state.sync_runner = SyncRunner(app)
 
