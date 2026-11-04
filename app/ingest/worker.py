@@ -21,6 +21,7 @@ from app.db.models import Collection, Document, DocumentStatus
 from app.ingest import queue
 from app.ingest.parsers import OcrEngine, default_ocr
 from app.ingest.pipeline import PermanentError, StageContext, StageList, default_stages
+from app.providers.errors import ProviderError
 from app.providers.registry import Providers
 from app.storage import BlobStore
 
@@ -139,6 +140,11 @@ class Worker:
             raise  # shutdown: the lease will expire and the job is retried later
         except PermanentError as e:
             await self._fail(claim, str(e), retry=False)
+        except ProviderError as e:
+            # A model or vector-store outage: transient. Name the provider, never its response.
+            log.warning("job hit a provider error", extra={"job_id": str(claim.job_id)})
+            message = f"The '{e.provider}' provider failed; will retry"
+            await self._fail(claim, message, retry=True)
         except Exception as e:
             log.exception("job failed", extra={"job_id": str(claim.job_id)})
             await self._fail(claim, f"Unexpected error ({type(e).__name__})", retry=True)
