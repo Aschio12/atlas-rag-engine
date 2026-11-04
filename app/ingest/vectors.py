@@ -6,11 +6,14 @@ question lands on the chunk that answers it (`chunk_id` in the payload leads bac
 
 The text itself is not stored in the vector store: the database is the single source of truth
 and retrieval hydrates hits from it. Payloads carry only what filtering and citation need.
+Documents indexed before an attribute was added to the payload lack it, so a filter on it skips
+them until they are re-indexed (POST .../reindex).
 """
 
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 from app.db.models import Chunk, Collection, Document
 
@@ -47,6 +50,11 @@ def lexical_text(chunk: Chunk) -> str:
     return "\n".join(p for p in parts if p)
 
 
+def epoch_seconds(moment: datetime) -> int:
+    """Unix time of a database timestamp (SQLite hands back naive datetimes; they are UTC)."""
+    return int((moment if moment.tzinfo else moment.replace(tzinfo=UTC)).timestamp())
+
+
 def base_payload(collection: Collection, document: Document, chunk: Chunk, version: str) -> dict:
     meta = chunk.meta or {}
     return {
@@ -62,5 +70,10 @@ def base_payload(collection: Collection, document: Document, chunk: Chunk, versi
         "heading_path": meta.get("heading_path", []),
         "language": meta.get("language"),
         "title": document.title,
+        # Document attributes, so retrieval can filter on them without a database round trip.
+        "source_type": document.source_type,
+        "source_id": str(document.source_id) if document.source_id else None,
+        "file_type": (document.meta or {}).get("kind"),
+        "created_at": epoch_seconds(document.created_at),
         "index_version": version,
     }

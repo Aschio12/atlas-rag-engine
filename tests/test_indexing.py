@@ -1,4 +1,5 @@
 import io
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import select
@@ -6,7 +7,7 @@ from sqlalchemy import select
 from app.db.models import Chunk
 from app.ingest.sparse import encode_query
 from app.ingest.stages import chunk_stage, embed_stage, index_stage
-from app.ingest.vectors import question_point_id, vector_collection
+from app.ingest.vectors import epoch_seconds, question_point_id, vector_collection
 from app.providers.errors import ProviderError
 from app.providers.fake import FakeEmbedder
 
@@ -70,6 +71,28 @@ async def test_a_document_is_fully_indexed_with_dense_and_sparse_vectors(client,
         assert pl["kind"] == "chunk" and pl["title"] == "handbook"
         assert pl["heading_path"] == c.meta["heading_path"] and pl["language"] == "en"
         assert pl["index_version"] == info["version"]
+
+
+async def test_payload_carries_the_document_attributes_that_retrieval_filters_on(
+    client, app, space
+):
+    cid, url = await make_collection(client, space)
+    doc_id, final = await ingest(client, app, space, url)
+    name = vector_collection(__import__("uuid").UUID(cid))
+    payloads = [p.payload for p in store_of(app)._data[name].values()]
+    created = epoch_seconds(datetime.fromisoformat(final["created_at"]))
+    for pl in payloads:
+        assert pl["source_type"] == "file" and pl["source_id"] is None
+        assert pl["file_type"] == "markdown"
+        assert abs(pl["created_at"] - created) <= 1 and isinstance(pl["created_at"], int)
+
+
+def test_epoch_seconds_treats_naive_database_timestamps_as_utc():
+    naive = datetime(2024, 1, 1, 12, 0, 0)
+    aware = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
+    assert epoch_seconds(naive) == epoch_seconds(aware) == 1704110400
+    plus_two = datetime(2024, 1, 1, 14, 0, 0, tzinfo=timezone(timedelta(hours=2)))
+    assert epoch_seconds(plus_two) == 1704110400
 
 
 async def test_dense_search_with_filters_finds_the_right_passage(client, app, space):
