@@ -10,6 +10,7 @@ from app.api import (
     jobs,
     providers,
     reindex,
+    retrievals,
     search,
     sources,
     workspaces,
@@ -26,3 +27,4 @@ router.include_router(chunks.router)
 router.include_router(reindex.router)
 router.include_router(sources.router)
 router.include_router(search.router)
+router.include_router(retrievals.router)

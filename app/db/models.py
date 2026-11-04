@@ -2,12 +2,13 @@
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     JSON,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -54,6 +55,9 @@ class Workspace(IdMixin, TimestampMixin, Base):
     )
     collections: Mapped[list["Collection"]] = relationship(
         back_populates="workspace", cascade="all, delete-orphan", passive_deletes=True
+    )
+    retrievals: Mapped[list["Retrieval"]] = relationship(
+        cascade="all, delete-orphan", passive_deletes=True
     )
 
 
@@ -202,6 +206,29 @@ class Chunk(IdMixin, Base):
     meta: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
 
     document: Mapped[Document] = relationship(back_populates="chunks")
+
+
+class Retrieval(IdMixin, Base):
+    """A saved search: the question, how it went, and the whole trace for the Inspector
+    (Phase 3.8). Passage text is not kept, only what identifies and explains each hit; the
+    chunks themselves are fetched from their own tables."""
+
+    __tablename__ = "retrievals"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    query: Mapped[str] = mapped_column(Text)
+    mode: Mapped[str] = mapped_column(String(16))
+    hit_count: Mapped[int] = mapped_column(Integer, default=0)
+    took_ms: Mapped[float] = mapped_column(Float, default=0.0)
+    record: Mapped[dict] = mapped_column(JSON, default=dict)  # hits, context, warnings, trace
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
+    )
 
 
 class JobState(enum.StrEnum):

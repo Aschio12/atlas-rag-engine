@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     sse_poll_s: float = Field(default=0.5, gt=0)  # how often a job event stream checks for change
     job_backoff_s: float = Field(default=2.0, ge=0)  # doubled after every failed attempt
 
+    # --- retrieval (Phase 3) ------------------------------------------------
+    # Searches are saved with their trace for the Inspector; the newest N are kept per
+    # workspace and older ones are deleted as new ones arrive. 0 turns saving off.
+    retrieval_history_limit: int = Field(default=500, ge=0)
+
     # --- LLM ---------------------------------------------------------------
     # "fake" needs no model or key: handy for first runs, demos and CI.
     llm_provider: Literal["ollama", "openai", "anthropic", "fake"] = "ollama"

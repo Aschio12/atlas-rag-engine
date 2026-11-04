@@ -8,9 +8,10 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field, StringConstraints, model_validator
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.auth import ViewerAccess
-from app.core.deps import SessionDep
+from app.core.deps import SessionDep, SettingsDep
 from app.core.errors import BadRequest, NotFound
 from app.db.models import Collection
 from app.retrieve.catalogue import build_catalogue
@@ -20,6 +21,7 @@ from app.retrieve.filters import (
     MetadataFilter,
     compile_filters,
 )
+from app.retrieve.history import save_retrieval
 from app.retrieve.options import RetrievalOptions
 from app.retrieve.pipeline import RetrievalPipeline
 from app.retrieve.rerank import RerankUnavailable
@@ -40,6 +42,9 @@ class SearchRequest(RetrievalOptions):
     query: Query
     collection_ids: list[uuid.UUID] | None = Field(
         None, max_length=MAX_COLLECTIONS, description="Search only these; default: all of them"
+    )
+    record: bool = Field(
+        True, description="Save the search and its trace so the Inspector can show it later"
     )
     history: list[Turn] = Field(
         default_factory=list,
@@ -88,8 +93,14 @@ class StageOut(BaseModel):
 
 
 class TraceOut(BaseModel):
+    schema_version: int
     query: str
+    options: dict[str, Any]
+    total_ms: float
     stages: list[StageOut]
+    chunks: dict[str, dict[str, Any]] = Field(
+        description="What to show for each passage the trace mentions, so it reads on its own"
+    )
 
 
 class BlockOut(BaseModel):
@@ -123,6 +134,9 @@ class SearchOut(BaseModel):
     warnings: list[str]
     context: ContextOut | None = None
     inferred_filters: list[MetadataFilter] = []
+    retrieval_id: uuid.UUID | None = Field(
+        None, description="Where this search and its trace were saved (see /retrievals)"
+    )
 
 
 class FieldOut(BaseModel):
@@ -150,10 +164,7 @@ def _context_out(c: ContextResult | None) -> ContextOut | None:
 
 
 def _trace_out(t: RetrievalTrace) -> TraceOut:
-    return TraceOut(
-        query=t.query,
-        stages=[StageOut(name=s.name, took_ms=s.took_ms, details=s.details) for s in t.stages],
-    )
+    return TraceOut(**t.to_dict())
 
 
 async def _collections(
@@ -173,7 +184,13 @@ async def _collections(
 
 
 @router.post("/workspaces/{workspace_id}/search", response_model=SearchOut)
-async def search(body: SearchRequest, access: ViewerAccess, session: SessionDep, request: Request):
+async def search(
+    body: SearchRequest,
+    access: ViewerAccess,
+    session: SessionDep,
+    request: Request,
+    settings: SettingsDep,
+):
     """Find the passages that best match a query, across the workspace's collections (or only
     the ones named), narrowed by optional metadata filters. Each hit carries its scores and the
     reasons it was chosen; `trace` shows what every stage did."""
@@ -190,7 +207,7 @@ async def search(body: SearchRequest, access: ViewerAccess, session: SessionDep,
         )
     except RerankUnavailable as e:
         raise BadRequest(str(e)) from None
-    return SearchOut(
+    out = SearchOut(
         query=body.query,
         mode=body.mode,
         hits=[_hit_out(h) for h in result.hits],
@@ -199,6 +216,22 @@ async def search(body: SearchRequest, access: ViewerAccess, session: SessionDep,
         context=_context_out(result.context),
         inferred_filters=result.inferred,
     )
+    if body.record:
+        try:
+            saved = await save_retrieval(
+                session,
+                workspace_id=access.workspace.id,
+                user_id=access.user.id,
+                response=out.model_dump(mode="json"),
+                keep=settings.retrieval_history_limit,
+            )
+        except SQLAlchemyError:
+            # A search that worked must not fail because its history could not be written.
+            await session.rollback()
+            out.warnings.append("The search could not be saved to the history")
+        else:
+            out.retrieval_id = saved.id if saved else None
+    return out
 
 
 @router.get("/workspaces/{workspace_id}/search/fields", response_model=list[FieldOut])
