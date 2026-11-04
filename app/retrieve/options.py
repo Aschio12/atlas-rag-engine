@@ -7,6 +7,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.retrieve.transform import TransformOptions
+
 Mode = Literal["dense", "sparse", "hybrid"]
 
 MAX_TOP_K = 50
@@ -19,6 +21,9 @@ class FusionOptions(BaseModel):
 
     method: Literal["rrf", "weighted"] = "rrf"
     k: int = Field(60, ge=1, le=1000, description="RRF damping constant")
+    variant_weight: float = Field(
+        1.0, ge=0, le=10, description="Weight of the extra searches from query transforms"
+    )
     dense_weight: float = Field(1.0, ge=0, le=10)
     sparse_weight: float = Field(1.0, ge=0, le=10)
 
@@ -52,6 +57,7 @@ class RetrievalOptions(BaseModel):
     )
     fusion: FusionOptions = Field(default_factory=FusionOptions)
     rerank: RerankOptions = Field(default_factory=RerankOptions)
+    transforms: TransformOptions = Field(default_factory=TransformOptions)
 
     @model_validator(mode="after")
     def _consistent(self) -> RetrievalOptions:

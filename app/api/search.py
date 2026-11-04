@@ -24,6 +24,7 @@ from app.retrieve.filters import (
 from app.retrieve.options import RetrievalOptions
 from app.retrieve.pipeline import RetrievalPipeline
 from app.retrieve.rerank import RerankUnavailable
+from app.retrieve.transform import Turn
 from app.retrieve.types import Hit, RetrievalTrace
 
 router = APIRouter(tags=["search"])
@@ -40,6 +41,11 @@ class SearchRequest(RetrievalOptions):
     query: Query
     collection_ids: list[uuid.UUID] | None = Field(
         None, max_length=MAX_COLLECTIONS, description="Search only these; default: all of them"
+    )
+    history: list[Turn] = Field(
+        default_factory=list,
+        max_length=20,
+        description="Earlier turns, oldest first; used by the 'rewrite' transform",
     )
     filters: list[MetadataFilter] = Field(
         default_factory=list, max_length=MAX_CONDITIONS, description="All must hold"
@@ -142,6 +148,7 @@ async def search(body: SearchRequest, access: ViewerAccess, session: SessionDep,
             collections,
             RetrievalOptions(**body.model_dump(include=set(RetrievalOptions.model_fields))),
             compile_filters(body.filters) if body.filters else CompiledFilter(),
+            body.history,
         )
     except RerankUnavailable as e:
         raise BadRequest(str(e)) from None
