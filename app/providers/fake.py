@@ -209,6 +209,10 @@ class InMemoryVectorStore(VectorStore):
         hits.sort(key=lambda h: (-h.score, h.id))
         return hits[:limit]
 
+    async def get_vectors(self, collection: str, ids: list[str]) -> dict[str, list[float]]:
+        points = self._data.get(collection, {})
+        return {i: list(points[i].vector) for i in ids if i in points}
+
     async def count(self, collection: str, filters: Filters | None = None) -> int:
         points = self._data.get(collection, {})
         return sum(1 for p in points.values() if _matches(p.payload, filters))

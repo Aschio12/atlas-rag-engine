@@ -195,6 +195,22 @@ class QdrantStore(VectorStore):
         sparse = {"indices": vector.indices, "values": vector.values}
         return await self._query(collection, SPARSE, sparse, limit, filters, exclude)
 
+    async def get_vectors(self, collection: str, ids: list[str]) -> dict[str, list[float]]:
+        if not ids:
+            return {}
+        body = {"ids": [_point_id(i) for i in ids], "with_vector": [DENSE], "with_payload": False}
+        resp = await self._call(
+            "POST", f"/collections/{collection}/points", json=body, ok_statuses=(404,)
+        )
+        if resp.status_code == 404:
+            return {}
+        try:
+            return {
+                str(r["id"]): [float(x) for x in r["vector"][DENSE]] for r in resp.json()["result"]
+            }
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ProviderError(self.name, "unexpected response shape") from exc
+
     async def count(self, collection: str, filters: Filters | None = None) -> int:
         body: dict[str, Any] = {"exact": True}
         if f := _filter(filters):

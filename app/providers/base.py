@@ -186,6 +186,11 @@ class VectorStore(ABC):
         behave as in `search`."""
 
     @abstractmethod
+    async def get_vectors(self, collection: str, ids: list[str]) -> dict[str, list[float]]:
+        """The dense vectors of the points with these ids; ids that do not exist are left out
+        (so is everything when the collection does not exist)."""
+
+    @abstractmethod
     async def count(self, collection: str, filters: Filters | None = None) -> int:
         """Number of points matching `filters` (all points when None)."""
 
