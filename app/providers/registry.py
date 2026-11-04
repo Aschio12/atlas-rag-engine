@@ -1,8 +1,8 @@
 """Lazily builds and caches providers for one app instance, and closes their HTTP clients."""
 
 from app.core.config import Settings
-from app.providers.base import LLM, Embedder, VectorStore
-from app.providers.factory import build_embedder, build_llm, build_vector_store
+from app.providers.base import LLM, Embedder, Reranker, VectorStore
+from app.providers.factory import build_embedder, build_llm, build_reranker, build_vector_store
 
 
 class Providers:
@@ -12,6 +12,17 @@ class Providers:
         self._embedder: Embedder | None = None
         self._embedders: dict[str, Embedder] = {}
         self._store: VectorStore | None = None
+        self._reranker: Reranker | None = None
+        self._reranker_built = False
+
+    @property
+    def reranker(self) -> Reranker | None:
+        """None when reranking is not configured (RERANK_PROVIDER=none)."""
+        if not self._reranker_built:
+            llm = self.llm if self._settings.rerank_provider == "llm" else None
+            self._reranker = build_reranker(self._settings, llm)
+            self._reranker_built = True
+        return self._reranker
 
     @property
     def llm(self) -> LLM:
@@ -38,7 +49,13 @@ class Providers:
         return self._store
 
     async def aclose(self) -> None:
-        for p in (self._llm, self._embedder, self._store, *self._embedders.values()):
+        for p in (
+            self._llm,
+            self._embedder,
+            self._store,
+            self._reranker,
+            *self._embedders.values(),
+        ):
             client = getattr(p, "_client", None)
             if client is not None:
                 await client.aclose()

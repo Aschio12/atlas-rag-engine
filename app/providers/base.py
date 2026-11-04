@@ -138,6 +138,7 @@ class Embedder(ABC):
 
 class Reranker(ABC):
     name: str
+    model: str
 
     @abstractmethod
     async def rerank(self, query: str, documents: list[str], top_n: int) -> list[Reranked]:

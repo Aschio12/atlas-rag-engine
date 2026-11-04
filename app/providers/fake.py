@@ -76,6 +76,7 @@ class FakeReranker(Reranker):
     """Scores by query-term overlap (Jaccard)."""
 
     name = "fake"
+    model = "fake-rerank"
 
     async def rerank(self, query: str, documents: list[str], top_n: int) -> list[Reranked]:
         q = set(tokenize(query))

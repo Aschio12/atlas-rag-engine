@@ -31,6 +31,8 @@ dev = [
 ]
 # Optional OCR for scanned PDFs (also needs the `tesseract` binary on PATH).
 ocr = ["pytesseract>=0.3.10"]
+# Optional local cross-encoder reranker (pulls in PyTorch; budget a few hundred MB of RAM).
+rerank = ["sentence-transformers>=3"]
 
 [tool.ruff]
 line-length = 100

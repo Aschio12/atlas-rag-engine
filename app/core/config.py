@@ -58,7 +58,14 @@ class Settings(BaseSettings):
     # --- embeddings / reranking -------------------------------------------
     embed_provider: Literal["ollama", "openai", "fake"] = "ollama"
     embed_model: str = ""  # empty = the provider's default
-    rerank_model: str = "BAAI/bge-reranker-base"
+    # "none" disables reranking: a search that asks for it gets a clear error.
+    rerank_provider: Literal["none", "fake", "llm", "cohere", "local"] = "none"
+    rerank_model: str = ""  # empty = the provider's default (see resolved_rerank_model)
+    rerank_api_key: SecretStr = SecretStr("")
+    # Cohere by default; Jina (https://api.jina.ai/v1) and servers copying the API also work.
+    rerank_base_url: str = "https://api.cohere.com/v2"
+    rerank_cache_entries: int = Field(default=20_000, ge=0)  # (query, passage) scores kept
+    rerank_cache_ttl_s: float = Field(default=3600.0, gt=0)
 
     # --- vector store ------------------------------------------------------
     vector_store: Literal["qdrant", "memory"] = "qdrant"
@@ -91,6 +98,17 @@ class Settings(BaseSettings):
         }
         return self.embed_model or defaults[self.embed_provider]
 
+    @property
+    def resolved_rerank_model(self) -> str:
+        defaults = {
+            "none": "",
+            "fake": "fake-rerank",
+            "llm": self.resolved_llm_model,
+            "cohere": "rerank-v3.5",
+            "local": "BAAI/bge-reranker-base",
+        }
+        return self.rerank_model or defaults[self.rerank_provider]
+
     @model_validator(mode="after")
     def _validate(self) -> "Settings":
         secret = self.jwt_secret.get_secret_value()
@@ -107,6 +125,8 @@ class Settings(BaseSettings):
             raise ValueError("ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic")
         if self.embed_provider == "openai" and not self.openai_api_key.get_secret_value():
             raise ValueError("OPENAI_API_KEY is required when EMBED_PROVIDER=openai")
+        if self.rerank_provider == "cohere" and not self.rerank_api_key.get_secret_value():
+            raise ValueError("RERANK_API_KEY is required when RERANK_PROVIDER=cohere")
         return self
 
 
