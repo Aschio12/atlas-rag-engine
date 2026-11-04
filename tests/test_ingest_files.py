@@ -119,3 +119,24 @@ def test_decode_text_variants():
     text, enc = decode_text(b"\x81\x8d")  # undefined in cp1252: replaced, never raises
     assert enc == "cp1252"
     assert text
+
+
+@pytest.mark.parametrize(
+    ("name", "language"),
+    [("main.py", "python"), ("App.tsx", "typescript"), ("lib.rs", "rust"), ("config.yml", "yaml"),
+     ("query.sql", "sql"), ("main.go", "go"), ("Cargo.toml", "toml"), ("deploy.sh", "shell")],
+)  # fmt: skip
+def test_source_and_config_files_are_detected_as_code(name, language):
+    from app.ingest.files import CODE_LANGUAGES, extension_of
+
+    assert detect_kind(b"x = 1\n", name, "application/octet-stream") == Kind.CODE
+    assert CODE_LANGUAGES[extension_of(name)] == language
+
+
+def test_a_binary_file_named_like_code_is_still_rejected():
+    with pytest.raises(UnsupportedFile):
+        detect_kind(b"\x7fELF\x02\x01\x00\x00" + b"\x00" * 20, "script.py")
+
+
+def test_extensionless_text_like_makefile_is_plain_text():
+    assert detect_kind(b"all:\n\techo hi\n", "Makefile") == Kind.TEXT

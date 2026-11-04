@@ -172,3 +172,26 @@ def test_every_kind_has_a_parser(kind):
         parse(b"x", kind)
     except ParseError as e:
         assert "No parser" not in str(e)
+
+
+# --- code -----------------------------------------------------------------------------------
+
+
+def test_code_keeps_indentation_and_reports_the_language():
+    src = b"def greet(name):\n    if name:\n        return f'hi {name}'\n    return 'hi'\n"
+    doc = parse(src, Kind.CODE, filename="greet.py")
+    assert doc.text == src.decode().rstrip("\n")
+    assert "    if name:\n        return" in doc.text
+    assert doc.metadata == {"parser": "code", "encoding": "utf-8", "code_language": "python"}
+    assert doc.headings == [] and doc.pages == []
+
+
+def test_code_without_a_known_extension_has_no_language():
+    doc = parse(b"echo hi\n", Kind.CODE, filename="mystery.zzz")
+    assert "code_language" not in doc.metadata
+    assert "code_language" not in parse(b"echo hi\n", Kind.CODE).metadata
+
+
+def test_empty_code_is_an_error():
+    with pytest.raises(ParseError):
+        parse(b"\n  \n", Kind.CODE, filename="a.py")
