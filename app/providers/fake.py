@@ -175,7 +175,8 @@ class InMemoryVectorStore(VectorStore):
         return hits[:limit]
 
     async def count(self, collection: str, filters: dict[str, Any] | None = None) -> int:
-        return sum(1 for p in self._data[collection].values() if _matches(p.payload, filters))
+        points = self._data.get(collection, {})
+        return sum(1 for p in points.values() if _matches(p.payload, filters))
 
     async def delete(
         self,
@@ -189,7 +190,9 @@ class InMemoryVectorStore(VectorStore):
             raise ValueError("delete requires ids or filters")
         if ids is not None and (filters or exclude):
             raise ValueError("ids cannot be combined with filters or exclude")
-        store = self._data[collection]
+        store = self._data.get(collection)
+        if store is None:
+            return  # no such collection: nothing to delete
         for pid in list(store):
             payload = store[pid].payload
             selected = pid in ids if ids is not None else _matches(payload, filters)

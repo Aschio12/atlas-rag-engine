@@ -36,6 +36,7 @@ from app.ingest.files import (
     title_from_filename,
 )
 from app.ingest.parsers import ParsedDocument
+from app.ingest.purge import purge_document
 from app.storage import BlobNotFound, BlobStore
 
 log = logging.getLogger("atlas.documents")
@@ -490,6 +491,7 @@ async def download_original(
 
 @router.delete("/{document_id}", status_code=204)
 async def delete_document(
+    request: Request,
     collection_id: uuid.UUID,
     document_id: uuid.UUID,
     access: MemberAccess,
@@ -499,6 +501,9 @@ async def delete_document(
     collection = await get_collection(session, access.workspace.id, collection_id)
     doc = await get_document(session, collection, document_id)
     prefix = keys.document_prefix(collection.workspace_id, collection.id, doc.id)
+    # Derived indexes first: if the vector store is down this fails with a 502 and the document
+    # is still there to retry, rather than leaving vectors that nothing refers to.
+    await purge_document(request.app.state.providers, collection.id, doc.id)
     await session.delete(doc)
     await session.commit()
     # After the commit: a leftover blob is harmless, a row pointing at a missing blob is not.

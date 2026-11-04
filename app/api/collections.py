@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Query, Request, Response
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -19,6 +19,7 @@ from app.db.models import ChunkingStrategy, Collection, Document
 from app.ingest import keys
 from app.ingest.chunking import ChunkingConfig
 from app.ingest.enrichment.config import EnrichmentConfig
+from app.ingest.purge import purge_collection
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/collections", tags=["collections"])
 
@@ -217,14 +218,16 @@ async def update_collection(
 
 @router.delete("/{collection_id}", status_code=204)
 async def delete_collection(
-    collection_id: uuid.UUID, access: AdminAccess, session: SessionDep, blobs: BlobsDep
+    request: Request,
+    collection_id: uuid.UUID,
+    access: AdminAccess,
+    session: SessionDep,
+    blobs: BlobsDep,
 ) -> Response:
-    """Delete a collection, its documents, chunks and stored files (admin or owner).
-
-    Vector-index cleanup is added with indexing (Phase 2.6/2.8), when vectors first exist.
-    """
+    """Delete a collection with its documents, chunks, vectors and stored files (admin/owner)."""
     collection, _ = await _get(session, access.workspace.id, collection_id)
     prefix = keys.collection_prefix(collection.workspace_id, collection.id)
+    await purge_collection(request.app.state.providers, collection.id)  # 502 if the index is down
     await session.delete(collection)
     await session.commit()
     await blobs.delete_prefix(prefix)  # after the commit: orphaned files are harmless

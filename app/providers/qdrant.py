@@ -150,7 +150,11 @@ class QdrantStore(VectorStore):
         body: dict[str, Any] = {"exact": True}
         if f := _filter(filters):
             body["filter"] = f
-        resp = await self._call("POST", f"/collections/{collection}/points/count", json=body)
+        resp = await self._call(
+            "POST", f"/collections/{collection}/points/count", json=body, ok_statuses=(404,)
+        )
+        if resp.status_code == 404:
+            return 0  # no such collection: nothing is stored
         try:
             return int(resp.json()["result"]["count"])
         except (KeyError, TypeError, ValueError) as exc:
@@ -174,5 +178,8 @@ class QdrantStore(VectorStore):
             else {"filter": _filter(filters, exclude)}
         )
         await self._call(
-            "POST", f"/collections/{collection}/points/delete?wait=true", json=selector
+            "POST",
+            f"/collections/{collection}/points/delete?wait=true",
+            json=selector,
+            ok_statuses=(404,),  # deleting from a collection that does not exist is a no-op
         )
