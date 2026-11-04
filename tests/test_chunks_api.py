@@ -248,3 +248,88 @@ async def test_preview_of_unreadable_text_is_a_400_and_needs_auth(client, space)
     r = await client.post(preview_url(space), json={"text": " \x00\x07 "}, headers=space["headers"])
     assert r.status_code == 400
     assert (await client.post(preview_url(space), json={"text": "hi"})).status_code == 401
+
+
+# --- enrichment (2.5) -----------------------------------------------------------------------
+
+
+async def test_default_enrichment_adds_language_and_keywords_for_free(client, app, space):
+    _, url = await collection_with(client, space, chunking_config=SMALL)
+    doc_id, final = await ingest(client, app, space, url)
+    e = final["metadata"]["enrichment"]
+    assert e["language"] == "en" and final["metadata"]["language"] == "en"
+    assert (e["summaries"], e["questions"]) == (0, 0) and "llm" not in e
+    items = (await get(client, space, f"{url}/{doc_id}/chunks?limit=200"))["items"]
+    assert all(c["language"] == "en" for c in items)
+    assert any("leave policy" in " ".join(c["keywords"]) for c in items)
+    assert all(c["summary"] is None and c["questions"] == [] for c in items)
+
+
+async def test_llm_enrichment_adds_summaries_and_questions_with_a_cap(client, app, space):
+    import json
+
+    from app.providers.fake import FakeLLM
+
+    reply = json.dumps(
+        {"summary": "Explains leave.", "questions": ["What is the leave policy for my team?"]}
+    )
+    app.state.providers._llm = FakeLLM(reply=reply)
+    cfg = {"summaries": True, "questions": True, "max_chunks": 4}
+    _, url = await collection_with(client, space, chunking_config=SMALL, enrichment=cfg)
+    doc_id, final = await ingest(client, app, space, url)
+    e = final["metadata"]["enrichment"]
+    assert e["summaries"] == 4 and e["questions"] == 4
+    assert e["llm"]["calls"] == 4 and e["llm"]["skipped"] > 0
+    items = (await get(client, space, f"{url}/{doc_id}/chunks?limit=200"))["items"]
+    assert items[0]["summary"] == "Explains leave."
+    assert items[0]["questions"] == ["What is the leave policy for my team?"]
+    assert items[4]["summary"] is None  # beyond the cap
+
+
+async def test_enrichment_failures_retry_with_a_clear_message(client, app, space):
+    from app.providers.errors import ProviderError
+
+    class Down:
+        model = "x"
+
+        async def complete(self, *a, **k):
+            raise ProviderError("ollama", "connection refused")
+
+    app.state.providers._llm = Down()
+    cfg = {"summaries": True, "concurrency": 1}
+    _, url = await collection_with(client, space, chunking_config=SMALL, enrichment=cfg)
+    _, final = await ingest(client, app, space, url)
+    assert final["job"]["state"] == "queued"
+    assert final["job"]["error"] == "The 'ollama' provider failed; will retry"
+
+
+async def test_parent_chunks_are_not_enriched(client, app, space):
+    cfg = {**SMALL, "parent_tokens": 256, "child_tokens": 64}
+    _, url = await collection_with(
+        client, space, chunking_strategy="parent_child", chunking_config=cfg
+    )
+    doc_id, _ = await ingest(client, app, space, url)
+    items = (await get(client, space, f"{url}/{doc_id}/chunks?limit=200"))["items"]
+    parents = [c for c in items if c["kind"] == "parent"]
+    children = [c for c in items if c["kind"] == "child"]
+    assert parents and all(c["language"] is None and c["keywords"] == [] for c in parents)
+    assert all(c["language"] == "en" for c in children)
+
+
+async def test_rerunning_enrichment_removes_stale_fields(client, app, space):
+    from sqlalchemy import update
+
+    from app.db.models import Chunk, IngestJob, JobState
+
+    _, url = await collection_with(client, space, chunking_config=SMALL)
+    doc_id, _ = await ingest(client, app, space, url)
+    async with app.state.sessionmaker() as s:  # pretend an older run left an LLM summary behind
+        for c in (await s.execute(select(Chunk))).scalars():
+            c.meta = {**c.meta, "summary": "stale", "questions": ["Stale question here?"]}
+        await s.execute(update(IngestJob).values(state=JobState.FAILED))
+        await s.commit()
+    job_id = (await get(client, space, f"{url}/{doc_id}"))["job"]["id"]
+    await client.post(f"/v1/workspaces/{space['ws']}/jobs/{job_id}/retry", headers=space["headers"])
+    await app.state.worker.run_once()
+    items = (await get(client, space, f"{url}/{doc_id}/chunks?limit=200"))["items"]
+    assert all(c["summary"] is None and c["questions"] == [] for c in items)
