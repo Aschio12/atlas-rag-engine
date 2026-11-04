@@ -112,3 +112,46 @@ async def test_get_vectors_returns_the_stored_dense_vectors_and_skips_unknown_id
     assert got == {"a": [1.0, 0.0], "d": [1.0, 0.0]}
     assert await store.get_vectors("c", []) == {}
     assert await store.get_vectors("missing", ["a"]) == {}
+
+
+async def test_nested_payload_keys_are_addressed_with_dots():
+    s = InMemoryVectorStore()
+    await s.ensure_collection("n", 2)
+    await s.upsert(
+        "n",
+        [
+            Point("a", [1.0, 0.0], {"attributes": {"year": 2024, "tags": ["rag", "eval"]}}),
+            Point("b", [1.0, 0.0], {"attributes": {"year": 2019}}),
+            Point("c", [1.0, 0.0], {"attributes": "not a map"}),
+            Point("d", [1.0, 0.0], {}),
+        ],
+    )
+
+    async def found(**kw):
+        return sorted(h.id for h in await s.search("n", [1.0, 0.0], 10, **kw))
+
+    assert await found(filters={"attributes.year": Range(gte=2020)}) == ["a"]
+    assert await found(filters={"attributes.tags": "eval"}) == ["a"]
+    assert await found(exclude={"attributes.year": 2019}) == ["a", "c", "d"]
+    assert await found(filters={"attributes.missing": 1}) == []
+
+
+async def test_set_payload_updates_matching_points_and_keeps_other_fields():
+    s = InMemoryVectorStore()
+    await s.ensure_collection("p", 2)
+    await s.upsert(
+        "p",
+        [
+            Point("a", [1.0, 0.0], {"document_id": "d1", "title": "old", "keep": 1}),
+            Point("b", [1.0, 0.0], {"document_id": "d2", "title": "old"}),
+        ],
+    )
+    await s.set_payload(
+        "p", {"title": "new", "attributes": {"year": 1}}, filters={"document_id": "d1"}
+    )
+    hits = {h.id: h.payload for h in await s.search("p", [1.0, 0.0], 10)}
+    assert hits["a"] == {"document_id": "d1", "title": "new", "keep": 1, "attributes": {"year": 1}}
+    assert hits["b"]["title"] == "old"
+    await s.set_payload("missing", {"x": 1}, filters={"document_id": "d1"})  # a no-op
+    with pytest.raises(ValueError):
+        await s.set_payload("p", {"x": 1}, filters={})

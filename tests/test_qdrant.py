@@ -321,3 +321,28 @@ async def test_get_vectors_handles_missing_collections_empty_input_and_bad_shape
         await store(lambda r: httpx.Response(200, json={"result": [{"id": ID}]})).get_vectors(
             "c", [ID]
         )
+
+
+async def test_set_payload_targets_points_by_filter():
+    seen = {}
+
+    def handler(req):
+        seen["path"], seen["body"] = req.url.path + "?" + req.url.query.decode(), body_of(req)
+        return httpx.Response(200, json={"result": {"status": "completed"}})
+
+    await store(handler).set_payload(
+        "c", {"title": "New", "attributes": {"year": 1}}, filters={"document_id": "d1"}
+    )
+    assert seen["path"] == "/collections/c/points/payload?wait=true"
+    assert seen["body"] == {
+        "payload": {"title": "New", "attributes": {"year": 1}},
+        "filter": {"must": [{"key": "document_id", "match": {"value": "d1"}}]},
+    }
+    assert (
+        await store(lambda r: httpx.Response(404, json={})).set_payload(
+            "c", {"x": 1}, filters={"document_id": "d1"}
+        )
+        is None
+    )
+    with pytest.raises(ValueError):
+        await store(handler).set_payload("c", {"x": 1}, filters={})
