@@ -109,3 +109,26 @@ def test_the_answer_prompt_states_the_grounding_rules():
         today="2026-11-04", canary="CANARY-1", instructions="", memory="", summary=""
     )
     assert "2026-11-04" in rendered and "CANARY-1" in rendered and "{{" not in rendered
+
+
+async def test_the_prompt_catalogue_is_served_to_signed_in_users(client, signup):
+    headers = await signup()
+    r = await client.get("/v1/prompts", headers=headers)
+    assert r.status_code == 200
+    by_name = {p["name"]: p for p in r.json()}
+    answer = by_name["answer"]
+    assert answer["version"] == 1 and answer["ref"].startswith("answer@1#")
+    assert answer["ref"].endswith(answer["sha"]) and "{{canary}}" in answer["text"]
+    assert set(answer["variables"]) == {"today", "canary", "instructions", "memory", "summary"}
+    assert (await client.get("/v1/prompts")).status_code == 401
+
+
+async def test_an_answer_names_the_prompt_that_produced_it(client, signup, space):
+    headers = await signup("other@example.com")
+    catalogue = {p["ref"] for p in (await client.get("/v1/prompts", headers=headers)).json()}
+    r = await client.post(
+        f"/v1/workspaces/{space['ws']}/answer",
+        json={"question": "anything"},
+        headers=space["headers"],
+    )
+    assert r.json()["prompt"] in catalogue
