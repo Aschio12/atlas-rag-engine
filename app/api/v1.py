@@ -12,6 +12,7 @@ from app.api import (
     jobs,
     memory,
     policy,
+    prompts,
     providers,
     reindex,
     retrievals,
@@ -36,3 +37,4 @@ router.include_router(answer.router)
 router.include_router(policy.router)
 router.include_router(memory.router)
 router.include_router(conversations.router)
+router.include_router(prompts.router)
