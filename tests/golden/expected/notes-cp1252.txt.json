@@ -1,0 +1,69 @@
+{
+ "chunks": {
+  "fixed": [
+   {
+    "end": 126,
+    "heading_path": [],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 34
+   }
+  ],
+  "parent_child": [
+   {
+    "end": 126,
+    "heading_path": [],
+    "kind": "parent",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 34
+   },
+   {
+    "end": 126,
+    "heading_path": [],
+    "kind": "child",
+    "page": null,
+    "parent": 0,
+    "start": 0,
+    "tokens": 34
+   }
+  ],
+  "recursive": [
+   {
+    "end": 126,
+    "heading_path": [],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 34
+   }
+  ],
+  "semantic": [
+   {
+    "end": 126,
+    "heading_path": [],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 34
+   }
+  ]
+ },
+ "parsed": {
+  "headings": [],
+  "metadata": {
+   "encoding": "cp1252",
+   "parser": "text"
+  },
+  "pages": [],
+  "text": "Réunion du conseil – compte rendu\nLe café était « excellent ». Prix : 12 € (TVA incluse).\nProchaine réunion : mardi à 14 h 30.",
+  "title": null,
+  "version": 1,
+  "warnings": []
+ }
+}

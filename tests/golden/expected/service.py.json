@@ -1,0 +1,106 @@
+{
+ "chunks": {
+  "fixed": [
+   {
+    "end": 241,
+    "heading_path": [],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 61
+   },
+   {
+    "end": 391,
+    "heading_path": [],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 213,
+    "tokens": 45
+   }
+  ],
+  "parent_child": [
+   {
+    "end": 391,
+    "heading_path": [],
+    "kind": "parent",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 98
+   },
+   {
+    "end": 236,
+    "heading_path": [],
+    "kind": "child",
+    "page": null,
+    "parent": 0,
+    "start": 0,
+    "tokens": 59
+   },
+   {
+    "end": 391,
+    "heading_path": [],
+    "kind": "child",
+    "page": null,
+    "parent": 0,
+    "start": 206,
+    "tokens": 47
+   }
+  ],
+  "recursive": [
+   {
+    "end": 236,
+    "heading_path": [],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 59
+   },
+   {
+    "end": 391,
+    "heading_path": [],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 206,
+    "tokens": 47
+   }
+  ],
+  "semantic": [
+   {
+    "end": 69,
+    "heading_path": [],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 18
+   },
+   {
+    "end": 391,
+    "heading_path": [],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 70,
+    "tokens": 81
+   }
+  ]
+ },
+ "parsed": {
+  "headings": [],
+  "metadata": {
+   "code_language": "python",
+   "encoding": "utf-8",
+   "parser": "code"
+  },
+  "pages": [],
+  "text": "\"\"\"Billing service.\"\"\"\n\nfrom dataclasses import dataclass\n\n@dataclass\nclass Invoice:\n    customer: str\n    amount_cents: int\n\n    def total_eur(self) -> float:\n        \"\"\"Convert cents to euros.\"\"\"\n        return self.amount_cents / 100\n\ndef make_invoice(customer: str, cents: int) -> Invoice:\n    if cents < 0:\n        raise ValueError(\"negative amount\")\n    return Invoice(customer, cents)",
+  "title": null,
+  "version": 1,
+  "warnings": []
+ }
+}

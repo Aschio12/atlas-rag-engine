@@ -1,0 +1,77 @@
+{
+ "chunks": {
+  "fixed": [
+   {
+    "end": 224,
+    "heading_path": [],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 56
+   }
+  ],
+  "parent_child": [
+   {
+    "end": 224,
+    "heading_path": [],
+    "kind": "parent",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 56
+   },
+   {
+    "end": 224,
+    "heading_path": [],
+    "kind": "child",
+    "page": null,
+    "parent": 0,
+    "start": 0,
+    "tokens": 56
+   }
+  ],
+  "recursive": [
+   {
+    "end": 224,
+    "heading_path": [],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 56
+   }
+  ],
+  "semantic": [
+   {
+    "end": 224,
+    "heading_path": [],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 56
+   }
+  ]
+ },
+ "parsed": {
+  "headings": [],
+  "metadata": {
+   "columns": [
+    "sku",
+    "product",
+    "price_eur",
+    "notes"
+   ],
+   "encoding": "utf-8",
+   "has_header": true,
+   "parser": "csv",
+   "rows": 3
+  },
+  "pages": [],
+  "text": "sku: A-100 | product: Widget, large | price_eur: 19,90 | notes: Ships in 2 days; fragile\nsku: A-200 | product: Gadget | price_eur: 7,50\nsku: A-300 | product: The \"Pro\" kit | price_eur: 129,00 | notes: Includes:\nstand + cable",
+  "title": null,
+  "version": 1,
+  "warnings": []
+ }
+}

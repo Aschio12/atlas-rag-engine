@@ -1,0 +1,86 @@
+{
+ "chunks": {
+  "fixed": [
+   {
+    "end": 85,
+    "heading_path": [
+     "Windows file"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 22
+   }
+  ],
+  "parent_child": [
+   {
+    "end": 85,
+    "heading_path": [
+     "Windows file"
+    ],
+    "kind": "parent",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 22
+   },
+   {
+    "end": 85,
+    "heading_path": [
+     "Windows file"
+    ],
+    "kind": "child",
+    "page": null,
+    "parent": 0,
+    "start": 0,
+    "tokens": 22
+   }
+  ],
+  "recursive": [
+   {
+    "end": 85,
+    "heading_path": [
+     "Windows file"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 22
+   }
+  ],
+  "semantic": [
+   {
+    "end": 85,
+    "heading_path": [
+     "Windows file"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 22
+   }
+  ]
+ },
+ "parsed": {
+  "headings": [
+   [
+    1,
+    "Windows file",
+    0,
+    null
+   ]
+  ],
+  "metadata": {
+   "encoding": "utf-8",
+   "parser": "markdown"
+  },
+  "pages": [],
+  "text": "# Windows file\n\nFirst paragraph\nwraps here.\n\nSecond paragraph after many blank lines.",
+  "title": "Windows file",
+  "version": 1,
+  "warnings": []
+ }
+}

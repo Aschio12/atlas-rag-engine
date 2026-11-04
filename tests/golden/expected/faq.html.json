@@ -1,0 +1,206 @@
+{
+ "chunks": {
+  "fixed": [
+   {
+    "end": 252,
+    "heading_path": [
+     "Frequently asked questions"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 65
+   },
+   {
+    "end": 340,
+    "heading_path": [
+     "Frequently asked questions",
+     "Plans"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 223,
+    "tokens": 30
+   }
+  ],
+  "parent_child": [
+   {
+    "end": 252,
+    "heading_path": [
+     "Frequently asked questions"
+    ],
+    "kind": "parent",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 65
+   },
+   {
+    "end": 193,
+    "heading_path": [
+     "Frequently asked questions"
+    ],
+    "kind": "child",
+    "page": null,
+    "parent": 0,
+    "start": 0,
+    "tokens": 49
+   },
+   {
+    "end": 252,
+    "heading_path": [
+     "Frequently asked questions",
+     "Plans"
+    ],
+    "kind": "child",
+    "page": null,
+    "parent": 0,
+    "start": 195,
+    "tokens": 21
+   },
+   {
+    "end": 340,
+    "heading_path": [
+     "Frequently asked questions",
+     "Plans",
+     "Technical"
+    ],
+    "kind": "parent",
+    "page": null,
+    "parent": null,
+    "start": 254,
+    "tokens": 22
+   },
+   {
+    "end": 340,
+    "heading_path": [
+     "Frequently asked questions",
+     "Plans",
+     "Technical"
+    ],
+    "kind": "child",
+    "page": null,
+    "parent": 3,
+    "start": 254,
+    "tokens": 22
+   }
+  ],
+  "recursive": [
+   {
+    "end": 193,
+    "heading_path": [
+     "Frequently asked questions"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 49
+   },
+   {
+    "end": 252,
+    "heading_path": [
+     "Frequently asked questions",
+     "Plans"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 195,
+    "tokens": 21
+   },
+   {
+    "end": 340,
+    "heading_path": [
+     "Frequently asked questions",
+     "Plans",
+     "Technical"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 254,
+    "tokens": 22
+   }
+  ],
+  "semantic": [
+   {
+    "end": 145,
+    "heading_path": [
+     "Frequently asked questions"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 37
+   },
+   {
+    "end": 252,
+    "heading_path": [
+     "Frequently asked questions",
+     "Billing"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 146,
+    "tokens": 32
+   },
+   {
+    "end": 340,
+    "heading_path": [
+     "Frequently asked questions",
+     "Plans",
+     "Technical"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 254,
+    "tokens": 22
+   }
+  ]
+ },
+ "parsed": {
+  "headings": [
+   [
+    1,
+    "Frequently asked questions",
+    0,
+    null
+   ],
+   [
+    2,
+    "Billing",
+    28,
+    null
+   ],
+   [
+    2,
+    "Plans",
+    195,
+    null
+   ],
+   [
+    3,
+    "Technical",
+    254,
+    null
+   ]
+  ],
+  "metadata": {
+   "description": "Answers to common questions",
+   "encoding": "utf-8",
+   "language": "en",
+   "parser": "html"
+  },
+  "pages": [],
+  "text": "Frequently asked questions\n\nBilling\n\nWe charge monthly. Prices are listed in € & include VAT. Invoices are emailed on the 1st.\n\n- Cancel any time\n- Refunds within 14 days\n- Pro-rated after that\n\nPlans\n\nPlan | Seats | Price\nFree | 1 | €0\nTeam | 10 | €49\n\nTechnical\n\ncurl -H \"Authorization: Bearer $TOKEN\" \\\n     https://api.example.com/v1/me",
+  "title": "Help & FAQ | Example Co",
+  "version": 1,
+  "warnings": []
+ }
+}

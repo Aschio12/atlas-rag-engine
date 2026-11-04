@@ -1,0 +1,69 @@
+{
+ "chunks": {
+  "fixed": [
+   {
+    "end": 66,
+    "heading_path": [],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 18
+   }
+  ],
+  "parent_child": [
+   {
+    "end": 66,
+    "heading_path": [],
+    "kind": "parent",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 18
+   },
+   {
+    "end": 66,
+    "heading_path": [],
+    "kind": "child",
+    "page": null,
+    "parent": 0,
+    "start": 0,
+    "tokens": 18
+   }
+  ],
+  "recursive": [
+   {
+    "end": 66,
+    "heading_path": [],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 18
+   }
+  ],
+  "semantic": [
+   {
+    "end": 66,
+    "heading_path": [],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 18
+   }
+  ]
+ },
+ "parsed": {
+  "headings": [],
+  "metadata": {
+   "encoding": "utf-16",
+   "parser": "text"
+  },
+  "pages": [],
+  "text": "Meeting notes\nAttendees: Zoë, Müller, 李雷\nDecision: ship on Friday.",
+  "title": null,
+  "version": 1,
+  "warnings": []
+ }
+}

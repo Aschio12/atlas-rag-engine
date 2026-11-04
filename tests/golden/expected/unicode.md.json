@@ -1,0 +1,130 @@
+{
+ "chunks": {
+  "fixed": [
+   {
+    "end": 192,
+    "heading_path": [
+     "Unicode torture test 🌍"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 67
+   },
+   {
+    "end": 274,
+    "heading_path": [
+     "Unicode torture test 🌍"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 181,
+    "tokens": 24
+   }
+  ],
+  "parent_child": [
+   {
+    "end": 274,
+    "heading_path": [
+     "Unicode torture test 🌍"
+    ],
+    "kind": "parent",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 88
+   },
+   {
+    "end": 152,
+    "heading_path": [
+     "Unicode torture test 🌍"
+    ],
+    "kind": "child",
+    "page": null,
+    "parent": 0,
+    "start": 0,
+    "tokens": 57
+   },
+   {
+    "end": 274,
+    "heading_path": [
+     "Unicode torture test 🌍"
+    ],
+    "kind": "child",
+    "page": null,
+    "parent": 0,
+    "start": 154,
+    "tokens": 30
+   }
+  ],
+  "recursive": [
+   {
+    "end": 152,
+    "heading_path": [
+     "Unicode torture test 🌍"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 57
+   },
+   {
+    "end": 274,
+    "heading_path": [
+     "Unicode torture test 🌍"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 154,
+    "tokens": 30
+   }
+  ],
+  "semantic": [
+   {
+    "end": 113,
+    "heading_path": [
+     "Unicode torture test 🌍"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 29
+   },
+   {
+    "end": 274,
+    "heading_path": [
+     "Unicode torture test 🌍"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 115,
+    "tokens": 59
+   }
+  ]
+ },
+ "parsed": {
+  "headings": [
+   [
+    1,
+    "Unicode torture test 🌍",
+    0,
+    null
+   ]
+  ],
+  "metadata": {
+   "encoding": "utf-8",
+   "parser": "markdown"
+  },
+  "pages": [],
+  "text": "# Unicode torture test 🌍\n\nEmoji: 😀 👩‍💻 🇪🇹 — combining: é (é) and å (å).\n\nArabic (RTL): مرحبا بالعالم، هذا اختبار.\n\nJapanese: 日本語のテキストです。検索のためのテストをしています。\n\nZerowidth and non‑breaking space and a BOM-like character.\n\nMath: ∑ x² ≤ ∞, quotes “curly” and ‘single’, dashes – and —.",
+  "title": "Unicode torture test 🌍",
+  "version": 1,
+  "warnings": []
+ }
+}

@@ -1,0 +1,304 @@
+{
+ "chunks": {
+  "fixed": [
+   {
+    "end": 254,
+    "heading_path": [
+     "Atlas Appliance Manual"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 64
+   },
+   {
+    "end": 481,
+    "heading_path": [
+     "Atlas Appliance Manual",
+     "Installation"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 227,
+    "tokens": 64
+   },
+   {
+    "end": 709,
+    "heading_path": [
+     "Atlas Appliance Manual",
+     "Installation"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 455,
+    "tokens": 64
+   },
+   {
+    "end": 774,
+    "heading_path": [
+     "Setext Heading",
+     "Sub Heading"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 684,
+    "tokens": 23
+   }
+  ],
+  "parent_child": [
+   {
+    "end": 468,
+    "heading_path": [
+     "Atlas Appliance Manual"
+    ],
+    "kind": "parent",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 117
+   },
+   {
+    "end": 186,
+    "heading_path": [
+     "Atlas Appliance Manual"
+    ],
+    "kind": "child",
+    "page": null,
+    "parent": 0,
+    "start": 0,
+    "tokens": 47
+   },
+   {
+    "end": 367,
+    "heading_path": [
+     "Atlas Appliance Manual",
+     "Installation"
+    ],
+    "kind": "child",
+    "page": null,
+    "parent": 0,
+    "start": 188,
+    "tokens": 45
+   },
+   {
+    "end": 468,
+    "heading_path": [
+     "Atlas Appliance Manual",
+     "Installation"
+    ],
+    "kind": "child",
+    "page": null,
+    "parent": 0,
+    "start": 369,
+    "tokens": 25
+   },
+   {
+    "end": 774,
+    "heading_path": [
+     "Atlas Appliance Manual",
+     "Installation",
+     "Network settings"
+    ],
+    "kind": "parent",
+    "page": null,
+    "parent": null,
+    "start": 470,
+    "tokens": 76
+   },
+   {
+    "end": 608,
+    "heading_path": [
+     "Atlas Appliance Manual",
+     "Installation",
+     "Network settings"
+    ],
+    "kind": "child",
+    "page": null,
+    "parent": 4,
+    "start": 470,
+    "tokens": 35
+   },
+   {
+    "end": 774,
+    "heading_path": [
+     "Setext Heading"
+    ],
+    "kind": "child",
+    "page": null,
+    "parent": 4,
+    "start": 610,
+    "tokens": 41
+   }
+  ],
+  "recursive": [
+   {
+    "end": 186,
+    "heading_path": [
+     "Atlas Appliance Manual"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 47
+   },
+   {
+    "end": 367,
+    "heading_path": [
+     "Atlas Appliance Manual",
+     "Installation"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 188,
+    "tokens": 45
+   },
+   {
+    "end": 468,
+    "heading_path": [
+     "Atlas Appliance Manual",
+     "Installation"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 369,
+    "tokens": 25
+   },
+   {
+    "end": 608,
+    "heading_path": [
+     "Atlas Appliance Manual",
+     "Installation",
+     "Network settings"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 470,
+    "tokens": 35
+   },
+   {
+    "end": 774,
+    "heading_path": [
+     "Setext Heading"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 610,
+    "tokens": 41
+   }
+  ],
+  "semantic": [
+   {
+    "end": 186,
+    "heading_path": [
+     "Atlas Appliance Manual"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 47
+   },
+   {
+    "end": 468,
+    "heading_path": [
+     "Atlas Appliance Manual",
+     "Installation"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 188,
+    "tokens": 70
+   },
+   {
+    "end": 608,
+    "heading_path": [
+     "Atlas Appliance Manual",
+     "Installation",
+     "Network settings"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 470,
+    "tokens": 35
+   },
+   {
+    "end": 683,
+    "heading_path": [
+     "Setext Heading"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 610,
+    "tokens": 19
+   },
+   {
+    "end": 774,
+    "heading_path": [
+     "Setext Heading",
+     "Sub Heading"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 684,
+    "tokens": 23
+   }
+  ]
+ },
+ "parsed": {
+  "headings": [
+   [
+    1,
+    "Atlas Appliance Manual",
+    0,
+    null
+   ],
+   [
+    2,
+    "Installation",
+    188,
+    null
+   ],
+   [
+    3,
+    "Network settings",
+    470,
+    null
+   ],
+   [
+    1,
+    "Setext Heading",
+    610,
+    null
+   ],
+   [
+    2,
+    "Sub Heading",
+    672,
+    null
+   ]
+  ],
+  "metadata": {
+   "author": "Hardware Team",
+   "encoding": "utf-8",
+   "parser": "markdown"
+  },
+  "pages": [],
+  "text": "# Atlas Appliance Manual\n\nWelcome to the **Atlas** appliance. This manual covers *installation*, daily use and\ntroubleshooting. See [the website](https://example.com/support) for videos.\n\n## Installation\n\nUnpack the device and place it on a flat surface.\n\n1. Connect the power cable.\n2. Connect the network cable.\n3. Press and hold the power button for three seconds.\n\n```bash\n# not a heading: this is a shell comment inside a code fence\natlas-cli status --verbose\n```\n\n### Network settings\n\n| Setting | Default | Notes |\n|---------|---------|-------|\n| DHCP | on | Recommended |\n| Port | 8443 | HTTPS only |\n\nSetext Heading\n==============\n\nTroubleshooting steps follow.\n\nSub Heading\n-----------\n\nIf the light is red, restart the device. If it is still red, contact support.",
+  "title": "Atlas Appliance Manual",
+  "version": 1,
+  "warnings": []
+ }
+}

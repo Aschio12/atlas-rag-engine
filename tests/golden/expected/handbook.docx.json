@@ -1,0 +1,124 @@
+{
+ "chunks": {
+  "fixed": [
+   {
+    "end": 213,
+    "heading_path": [
+     "Employee Handbook"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 55
+   }
+  ],
+  "parent_child": [
+   {
+    "end": 213,
+    "heading_path": [
+     "Employee Handbook"
+    ],
+    "kind": "parent",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 55
+   },
+   {
+    "end": 175,
+    "heading_path": [
+     "Employee Handbook"
+    ],
+    "kind": "child",
+    "page": null,
+    "parent": 0,
+    "start": 0,
+    "tokens": 46
+   },
+   {
+    "end": 213,
+    "heading_path": [
+     "Employee Handbook",
+     "Contact"
+    ],
+    "kind": "child",
+    "page": null,
+    "parent": 0,
+    "start": 177,
+    "tokens": 9
+   }
+  ],
+  "recursive": [
+   {
+    "end": 175,
+    "heading_path": [
+     "Employee Handbook"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 46
+   },
+   {
+    "end": 213,
+    "heading_path": [
+     "Employee Handbook",
+     "Contact"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 177,
+    "tokens": 9
+   }
+  ],
+  "semantic": [
+   {
+    "end": 213,
+    "heading_path": [
+     "Employee Handbook"
+    ],
+    "kind": "chunk",
+    "page": null,
+    "parent": null,
+    "start": 0,
+    "tokens": 55
+   }
+  ]
+ },
+ "parsed": {
+  "headings": [
+   [
+    1,
+    "Employee Handbook",
+    0,
+    null
+   ],
+   [
+    2,
+    "Leave policy",
+    44,
+    null
+   ],
+   [
+    2,
+    "Contact",
+    177,
+    null
+   ]
+  ],
+  "metadata": {
+   "author": "HR Team",
+   "created": "2013-12-23T23:15:00Z",
+   "modified": "2013-12-23T23:15:00Z",
+   "parser": "docx"
+  },
+  "pages": [],
+  "text": "Employee Handbook\n\nWelcome to the company.\n\nLeave policy\n\nStaff get 25 days of leave.\n\n- Carry over up to 5 days\n- Request via the portal\n\nLevel | Days\nJunior | 20\nSenior | 25\n\nContact\n\nLine one\nline two after tab",
+  "title": "Employee Handbook",
+  "version": 1,
+  "warnings": []
+ }
+}

@@ -1,0 +1,117 @@
+{
+ "chunks": {
+  "fixed": [
+   {
+    "end": 165,
+    "heading_path": [
+     "Q3 Business Review"
+    ],
+    "kind": "chunk",
+    "page": 1,
+    "parent": null,
+    "start": 0,
+    "tokens": 42
+   }
+  ],
+  "parent_child": [
+   {
+    "end": 165,
+    "heading_path": [
+     "Q3 Business Review"
+    ],
+    "kind": "parent",
+    "page": 1,
+    "parent": null,
+    "start": 0,
+    "tokens": 42
+   },
+   {
+    "end": 165,
+    "heading_path": [
+     "Q3 Business Review"
+    ],
+    "kind": "child",
+    "page": 1,
+    "parent": 0,
+    "start": 0,
+    "tokens": 42
+   }
+  ],
+  "recursive": [
+   {
+    "end": 165,
+    "heading_path": [
+     "Q3 Business Review"
+    ],
+    "kind": "chunk",
+    "page": 1,
+    "parent": null,
+    "start": 0,
+    "tokens": 42
+   }
+  ],
+  "semantic": [
+   {
+    "end": 165,
+    "heading_path": [
+     "Q3 Business Review"
+    ],
+    "kind": "chunk",
+    "page": 1,
+    "parent": null,
+    "start": 0,
+    "tokens": 42
+   }
+  ]
+ },
+ "parsed": {
+  "headings": [
+   [
+    1,
+    "Q3 Business Review",
+    0,
+    1
+   ],
+   [
+    1,
+    "Revenue",
+    41,
+    2
+   ]
+  ],
+  "metadata": {
+   "author": "Finance",
+   "created": "2013-01-27T09:14:16Z",
+   "modified": "2013-01-27T09:15:58Z",
+   "parser": "pptx",
+   "slides": 4,
+   "slides_with_notes": 1
+  },
+  "pages": [
+   [
+    1,
+    0,
+    39
+   ],
+   [
+    2,
+    41,
+    139
+   ],
+   [
+    3,
+    141,
+    165
+   ],
+   [
+    4,
+    165,
+    165
+   ]
+  ],
+  "text": "Q3 Business Review\n\nPrepared by Finance\n\nRevenue\n\nTop text\n\nBottom text\n\nRegion | Sales\nEMEA | $4M\n\nSpeaker notes: Mention the EMEA launch.\n\nAppendix without a title",
+  "title": "Q3 Business Review",
+  "version": 1,
+  "warnings": []
+ }
+}
