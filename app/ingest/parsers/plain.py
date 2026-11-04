@@ -20,6 +20,17 @@ def parse_text(data: bytes) -> ParsedDocument:
     return ParsedDocument(text=text, metadata={"parser": "text", "encoding": encoding})
 
 
+def parse_code(data: bytes, filename: str | None = None) -> ParsedDocument:
+    """Source and config files: plain text with indentation kept, plus the language."""
+    from app.ingest.files import CODE_LANGUAGES, extension_of
+
+    doc = parse_text(data)
+    doc.metadata["parser"] = "code"
+    if language := CODE_LANGUAGES.get(extension_of(filename)):
+        doc.metadata["code_language"] = language
+    return doc
+
+
 # --- markdown ------------------------------------------------------------------------------
 
 _FENCE = re.compile(r"^\s{0,3}(```|~~~)")

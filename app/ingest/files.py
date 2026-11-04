@@ -27,6 +27,7 @@ class Kind(enum.StrEnum):
     MARKDOWN = "markdown"
     CSV = "csv"
     TEXT = "text"
+    CODE = "code"  # source and config files: read as text, with the language noted
 
 
 class UnsupportedFile(ValueError):
@@ -49,6 +50,19 @@ _BY_EXTENSION = {
     "log": Kind.TEXT,
     "rst": Kind.TEXT,
 }
+# extension -> language name for source and configuration files
+CODE_LANGUAGES = {
+    "py": "python", "js": "javascript", "jsx": "javascript", "mjs": "javascript",
+    "cjs": "javascript", "ts": "typescript", "tsx": "typescript", "go": "go", "rs": "rust",
+    "java": "java", "kt": "kotlin", "kts": "kotlin", "scala": "scala", "rb": "ruby",
+    "php": "php", "c": "c", "h": "c", "cc": "cpp", "cpp": "cpp", "hpp": "cpp", "cs": "csharp",
+    "swift": "swift", "sh": "shell", "bash": "shell", "zsh": "shell", "sql": "sql",
+    "lua": "lua", "r": "r", "pl": "perl", "dart": "dart", "ex": "elixir", "exs": "elixir",
+    "hs": "haskell", "clj": "clojure", "css": "css", "scss": "scss", "less": "less",
+    "json": "json", "yaml": "yaml", "yml": "yaml", "toml": "toml", "ini": "ini", "cfg": "ini",
+    "conf": "config", "tf": "terraform", "proto": "protobuf", "graphql": "graphql",
+}  # fmt: skip
+_BY_EXTENSION.update({ext: Kind.CODE for ext in CODE_LANGUAGES})
 _BY_CONTENT_TYPE = {
     "application/pdf": Kind.PDF,
     "text/html": Kind.HTML,

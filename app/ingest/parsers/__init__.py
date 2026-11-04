@@ -8,7 +8,7 @@ from app.ingest.parsers.docx import parse_docx
 from app.ingest.parsers.html import parse_html
 from app.ingest.parsers.ocr import OcrEngine, default_ocr
 from app.ingest.parsers.pdf import parse_pdf
-from app.ingest.parsers.plain import parse_csv, parse_markdown, parse_text
+from app.ingest.parsers.plain import parse_code, parse_csv, parse_markdown, parse_text
 from app.ingest.parsers.pptx import parse_pptx
 
 __all__ = [
@@ -23,7 +23,13 @@ __all__ = [
 ]
 
 
-def parse(data: bytes, kind: Kind, *, ocr: OcrEngine | None = None) -> ParsedDocument:
+def parse(
+    data: bytes,
+    kind: Kind,
+    *,
+    ocr: OcrEngine | None = None,
+    filename: str | None = None,
+) -> ParsedDocument:
     """Parse a file of a known kind. Raises `ParseError` for unreadable files.
 
     `ocr` is used for scanned PDF pages; pass `default_ocr()` to use Tesseract when installed.
@@ -35,6 +41,8 @@ def parse(data: bytes, kind: Kind, *, ocr: OcrEngine | None = None) -> ParsedDoc
             return parse_markdown(data)
         case Kind.CSV:
             return parse_csv(data)
+        case Kind.CODE:
+            return parse_code(data, filename)
         case Kind.HTML:
             return parse_html(data)
         case Kind.DOCX:

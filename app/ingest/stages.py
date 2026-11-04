@@ -61,7 +61,9 @@ async def parse_stage(ctx: StageContext) -> None:
 
     try:
         # Parsing is CPU-bound; a thread keeps the event loop (API, SSE) responsive.
-        parsed = await asyncio.to_thread(parse, data, kind, ocr=ctx.ocr)
+        parsed = await asyncio.to_thread(
+            parse, data, kind, ocr=ctx.ocr, filename=meta.get("filename")
+        )
     except ParseError as e:
         raise PermanentError(str(e)) from None
 
