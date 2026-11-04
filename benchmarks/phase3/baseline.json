@@ -1,0 +1,1156 @@
+{
+  "meta": {
+    "questions": 36,
+    "corpus": "12 documents from corpus",
+    "chunking": "recursive, ~128 tokens, 16 overlap",
+    "embedding": "fake:fake-embed",
+    "reranker": "fake:fake-rerank",
+    "vector store": "memory"
+  },
+  "configs": {
+    "dense": {
+      "metrics": {
+        "mrr": 0.6028,
+        "recall@1": 0.5139,
+        "hit@1": 0.5278,
+        "ndcg@1": 0.5278,
+        "recall@3": 0.6389,
+        "hit@3": 0.6667,
+        "ndcg@3": 0.5918,
+        "recall@5": 0.6389,
+        "hit@5": 0.6667,
+        "ndcg@5": 0.5907,
+        "recall@10": 0.7639,
+        "hit@10": 0.8056,
+        "ndcg@10": 0.6342
+      },
+      "by_tag": {
+        "keyword": {
+          "mrr": 0.8929,
+          "recall@1": 0.8571,
+          "hit@1": 0.8571,
+          "ndcg@1": 0.8571,
+          "recall@3": 0.9286,
+          "hit@3": 0.9286,
+          "ndcg@3": 0.8929,
+          "recall@5": 0.9286,
+          "hit@5": 0.9286,
+          "ndcg@5": 0.8929,
+          "recall@10": 1.0,
+          "hit@10": 1.0,
+          "ndcg@10": 0.9183
+        },
+        "multi": {
+          "mrr": 0.2966,
+          "recall@1": 0.0714,
+          "hit@1": 0.1429,
+          "ndcg@1": 0.1429,
+          "recall@3": 0.2857,
+          "hit@3": 0.4286,
+          "ndcg@3": 0.2202,
+          "recall@5": 0.2857,
+          "hit@5": 0.4286,
+          "ndcg@5": 0.2145,
+          "recall@10": 0.6429,
+          "hit@10": 0.8571,
+          "ndcg@10": 0.3426
+        },
+        "paraphrase": {
+          "mrr": 0.475,
+          "recall@1": 0.4,
+          "hit@1": 0.4,
+          "ndcg@1": 0.4,
+          "recall@3": 0.5333,
+          "hit@3": 0.5333,
+          "ndcg@3": 0.4841,
+          "recall@5": 0.5333,
+          "hit@5": 0.5333,
+          "ndcg@5": 0.4841,
+          "recall@10": 0.6,
+          "hit@10": 0.6,
+          "ndcg@10": 0.5052
+        }
+      },
+      "latency_ms": {
+        "mean": 12.9321,
+        "p95": 17.7346
+      },
+      "queries": [
+        {
+          "id": "k01",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k02",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k03",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k04",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k05",
+          "tag": "keyword",
+          "first_relevant_rank": 3,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k06",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k07",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k08",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k09",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k10",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k11",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k12",
+          "tag": "keyword",
+          "first_relevant_rank": 6,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k13",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k14",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p01",
+          "tag": "paraphrase",
+          "first_relevant_rank": null,
+          "evidence": "0/1"
+        },
+        {
+          "id": "p02",
+          "tag": "paraphrase",
+          "first_relevant_rank": 2,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p03",
+          "tag": "paraphrase",
+          "first_relevant_rank": null,
+          "evidence": "0/1"
+        },
+        {
+          "id": "p04",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p05",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p06",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p07",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p08",
+          "tag": "paraphrase",
+          "first_relevant_rank": null,
+          "evidence": "0/1"
+        },
+        {
+          "id": "p09",
+          "tag": "paraphrase",
+          "first_relevant_rank": 8,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p10",
+          "tag": "paraphrase",
+          "first_relevant_rank": null,
+          "evidence": "0/1"
+        },
+        {
+          "id": "p11",
+          "tag": "paraphrase",
+          "first_relevant_rank": null,
+          "evidence": "0/1"
+        },
+        {
+          "id": "p12",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p13",
+          "tag": "paraphrase",
+          "first_relevant_rank": 2,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p14",
+          "tag": "paraphrase",
+          "first_relevant_rank": null,
+          "evidence": "0/1"
+        },
+        {
+          "id": "p15",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "m01",
+          "tag": "multi",
+          "first_relevant_rank": 3,
+          "evidence": "2/4"
+        },
+        {
+          "id": "m02",
+          "tag": "multi",
+          "first_relevant_rank": 1,
+          "evidence": "2/2"
+        },
+        {
+          "id": "m03",
+          "tag": "multi",
+          "first_relevant_rank": 10,
+          "evidence": "1/1"
+        },
+        {
+          "id": "m04",
+          "tag": "multi",
+          "first_relevant_rank": 6,
+          "evidence": "1/2"
+        },
+        {
+          "id": "m05",
+          "tag": "multi",
+          "first_relevant_rank": null,
+          "evidence": "0/2"
+        },
+        {
+          "id": "m06",
+          "tag": "multi",
+          "first_relevant_rank": 3,
+          "evidence": "1/2"
+        },
+        {
+          "id": "m07",
+          "tag": "multi",
+          "first_relevant_rank": 7,
+          "evidence": "2/2"
+        }
+      ]
+    },
+    "sparse": {
+      "metrics": {
+        "mrr": 0.8819,
+        "recall@1": 0.7639,
+        "hit@1": 0.8333,
+        "ndcg@1": 0.8333,
+        "recall@3": 0.9306,
+        "hit@3": 0.9444,
+        "ndcg@3": 0.8806,
+        "recall@5": 0.9583,
+        "hit@5": 0.9722,
+        "ndcg@5": 0.889,
+        "recall@10": 0.9722,
+        "hit@10": 0.9722,
+        "ndcg@10": 0.8939
+      },
+      "by_tag": {
+        "keyword": {
+          "mrr": 1.0,
+          "recall@1": 1.0,
+          "hit@1": 1.0,
+          "ndcg@1": 1.0,
+          "recall@3": 1.0,
+          "hit@3": 1.0,
+          "ndcg@3": 1.0,
+          "recall@5": 1.0,
+          "hit@5": 1.0,
+          "ndcg@5": 1.0,
+          "recall@10": 1.0,
+          "hit@10": 1.0,
+          "ndcg@10": 1.0
+        },
+        "multi": {
+          "mrr": 0.9048,
+          "recall@1": 0.5,
+          "hit@1": 0.8571,
+          "ndcg@1": 0.8571,
+          "recall@3": 0.9286,
+          "hit@3": 1.0,
+          "ndcg@3": 0.8674,
+          "recall@5": 0.9286,
+          "hit@5": 1.0,
+          "ndcg@5": 0.849,
+          "recall@10": 1.0,
+          "hit@10": 1.0,
+          "ndcg@10": 0.8744
+        },
+        "paraphrase": {
+          "mrr": 0.7611,
+          "recall@1": 0.6667,
+          "hit@1": 0.6667,
+          "ndcg@1": 0.6667,
+          "recall@3": 0.8667,
+          "hit@3": 0.8667,
+          "ndcg@3": 0.7754,
+          "recall@5": 0.9333,
+          "hit@5": 0.9333,
+          "ndcg@5": 0.8041,
+          "recall@10": 0.9333,
+          "hit@10": 0.9333,
+          "ndcg@10": 0.8041
+        }
+      },
+      "latency_ms": {
+        "mean": 13.5854,
+        "p95": 24.3418
+      },
+      "queries": [
+        {
+          "id": "k01",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k02",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k03",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k04",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k05",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k06",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k07",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k08",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k09",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k10",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k11",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k12",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k13",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k14",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p01",
+          "tag": "paraphrase",
+          "first_relevant_rank": null,
+          "evidence": "0/1"
+        },
+        {
+          "id": "p02",
+          "tag": "paraphrase",
+          "first_relevant_rank": 4,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p03",
+          "tag": "paraphrase",
+          "first_relevant_rank": 3,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p04",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p05",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p06",
+          "tag": "paraphrase",
+          "first_relevant_rank": 3,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p07",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p08",
+          "tag": "paraphrase",
+          "first_relevant_rank": 2,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p09",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p10",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p11",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p12",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p13",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p14",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p15",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "m01",
+          "tag": "multi",
+          "first_relevant_rank": 1,
+          "evidence": "4/4"
+        },
+        {
+          "id": "m02",
+          "tag": "multi",
+          "first_relevant_rank": 1,
+          "evidence": "2/2"
+        },
+        {
+          "id": "m03",
+          "tag": "multi",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "m04",
+          "tag": "multi",
+          "first_relevant_rank": 1,
+          "evidence": "2/2"
+        },
+        {
+          "id": "m05",
+          "tag": "multi",
+          "first_relevant_rank": 3,
+          "evidence": "2/2"
+        },
+        {
+          "id": "m06",
+          "tag": "multi",
+          "first_relevant_rank": 1,
+          "evidence": "2/2"
+        },
+        {
+          "id": "m07",
+          "tag": "multi",
+          "first_relevant_rank": 1,
+          "evidence": "2/2"
+        }
+      ]
+    },
+    "hybrid": {
+      "metrics": {
+        "mrr": 0.819,
+        "recall@1": 0.7222,
+        "hit@1": 0.7778,
+        "ndcg@1": 0.7778,
+        "recall@3": 0.8056,
+        "hit@3": 0.8333,
+        "ndcg@3": 0.7834,
+        "recall@5": 0.8889,
+        "hit@5": 0.9167,
+        "ndcg@5": 0.8136,
+        "recall@10": 0.9167,
+        "hit@10": 0.9167,
+        "ndcg@10": 0.8242
+      },
+      "by_tag": {
+        "keyword": {
+          "mrr": 1.0,
+          "recall@1": 1.0,
+          "hit@1": 1.0,
+          "ndcg@1": 1.0,
+          "recall@3": 1.0,
+          "hit@3": 1.0,
+          "ndcg@3": 1.0,
+          "recall@5": 1.0,
+          "hit@5": 1.0,
+          "ndcg@5": 1.0,
+          "recall@10": 1.0,
+          "hit@10": 1.0,
+          "ndcg@10": 1.0
+        },
+        "multi": {
+          "mrr": 0.6905,
+          "recall@1": 0.2857,
+          "hit@1": 0.5714,
+          "ndcg@1": 0.5714,
+          "recall@3": 0.7143,
+          "hit@3": 0.8571,
+          "ndcg@3": 0.6006,
+          "recall@5": 0.7143,
+          "hit@5": 0.8571,
+          "ndcg@5": 0.5837,
+          "recall@10": 0.8571,
+          "hit@10": 0.8571,
+          "ndcg@10": 0.6382
+        },
+        "paraphrase": {
+          "mrr": 0.71,
+          "recall@1": 0.6667,
+          "hit@1": 0.6667,
+          "ndcg@1": 0.6667,
+          "recall@3": 0.6667,
+          "hit@3": 0.6667,
+          "ndcg@3": 0.6667,
+          "recall@5": 0.8667,
+          "hit@5": 0.8667,
+          "ndcg@5": 0.747,
+          "recall@10": 0.8667,
+          "hit@10": 0.8667,
+          "ndcg@10": 0.747
+        }
+      },
+      "latency_ms": {
+        "mean": 21.8776,
+        "p95": 42.0526
+      },
+      "queries": [
+        {
+          "id": "k01",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k02",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k03",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k04",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k05",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k06",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k07",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k08",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k09",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k10",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k11",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k12",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k13",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k14",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p01",
+          "tag": "paraphrase",
+          "first_relevant_rank": null,
+          "evidence": "0/1"
+        },
+        {
+          "id": "p02",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p03",
+          "tag": "paraphrase",
+          "first_relevant_rank": null,
+          "evidence": "0/1"
+        },
+        {
+          "id": "p04",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p05",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p06",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p07",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p08",
+          "tag": "paraphrase",
+          "first_relevant_rank": 5,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p09",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p10",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p11",
+          "tag": "paraphrase",
+          "first_relevant_rank": 5,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p12",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p13",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p14",
+          "tag": "paraphrase",
+          "first_relevant_rank": 4,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p15",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "m01",
+          "tag": "multi",
+          "first_relevant_rank": 1,
+          "evidence": "4/4"
+        },
+        {
+          "id": "m02",
+          "tag": "multi",
+          "first_relevant_rank": 1,
+          "evidence": "2/2"
+        },
+        {
+          "id": "m03",
+          "tag": "multi",
+          "first_relevant_rank": 3,
+          "evidence": "1/1"
+        },
+        {
+          "id": "m04",
+          "tag": "multi",
+          "first_relevant_rank": 2,
+          "evidence": "2/2"
+        },
+        {
+          "id": "m05",
+          "tag": "multi",
+          "first_relevant_rank": null,
+          "evidence": "0/2"
+        },
+        {
+          "id": "m06",
+          "tag": "multi",
+          "first_relevant_rank": 1,
+          "evidence": "2/2"
+        },
+        {
+          "id": "m07",
+          "tag": "multi",
+          "first_relevant_rank": 1,
+          "evidence": "2/2"
+        }
+      ]
+    },
+    "hybrid+rerank": {
+      "metrics": {
+        "mrr": 0.769,
+        "recall@1": 0.6111,
+        "hit@1": 0.6667,
+        "ndcg@1": 0.6667,
+        "recall@3": 0.8333,
+        "hit@3": 0.8611,
+        "ndcg@3": 0.7561,
+        "recall@5": 0.8889,
+        "hit@5": 0.8889,
+        "ndcg@5": 0.7779,
+        "recall@10": 0.9583,
+        "hit@10": 0.9722,
+        "ndcg@10": 0.8024
+      },
+      "by_tag": {
+        "keyword": {
+          "mrr": 0.9524,
+          "recall@1": 0.9286,
+          "hit@1": 0.9286,
+          "ndcg@1": 0.9286,
+          "recall@3": 1.0,
+          "hit@3": 1.0,
+          "ndcg@3": 0.9643,
+          "recall@5": 1.0,
+          "hit@5": 1.0,
+          "ndcg@5": 0.9643,
+          "recall@10": 1.0,
+          "hit@10": 1.0,
+          "ndcg@10": 0.9643
+        },
+        "multi": {
+          "mrr": 0.7083,
+          "recall@1": 0.2857,
+          "hit@1": 0.5714,
+          "ndcg@1": 0.5714,
+          "recall@3": 0.7143,
+          "hit@3": 0.8571,
+          "ndcg@3": 0.6181,
+          "recall@5": 0.8571,
+          "hit@5": 0.8571,
+          "ndcg@5": 0.6685,
+          "recall@10": 0.9286,
+          "hit@10": 1.0,
+          "ndcg@10": 0.6962
+        },
+        "paraphrase": {
+          "mrr": 0.6262,
+          "recall@1": 0.4667,
+          "hit@1": 0.4667,
+          "ndcg@1": 0.4667,
+          "recall@3": 0.7333,
+          "hit@3": 0.7333,
+          "ndcg@3": 0.6262,
+          "recall@5": 0.8,
+          "hit@5": 0.8,
+          "ndcg@5": 0.6549,
+          "recall@10": 0.9333,
+          "hit@10": 0.9333,
+          "ndcg@10": 0.7009
+        }
+      },
+      "latency_ms": {
+        "mean": 36.4579,
+        "p95": 58.0668
+      },
+      "queries": [
+        {
+          "id": "k01",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k02",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k03",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k04",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k05",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k06",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k07",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k08",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k09",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k10",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k11",
+          "tag": "keyword",
+          "first_relevant_rank": 3,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k12",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k13",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "k14",
+          "tag": "keyword",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p01",
+          "tag": "paraphrase",
+          "first_relevant_rank": null,
+          "evidence": "0/1"
+        },
+        {
+          "id": "p02",
+          "tag": "paraphrase",
+          "first_relevant_rank": 6,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p03",
+          "tag": "paraphrase",
+          "first_relevant_rank": 7,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p04",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p05",
+          "tag": "paraphrase",
+          "first_relevant_rank": 4,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p06",
+          "tag": "paraphrase",
+          "first_relevant_rank": 3,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p07",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p08",
+          "tag": "paraphrase",
+          "first_relevant_rank": 2,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p09",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p10",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p11",
+          "tag": "paraphrase",
+          "first_relevant_rank": 2,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p12",
+          "tag": "paraphrase",
+          "first_relevant_rank": 2,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p13",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p14",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "p15",
+          "tag": "paraphrase",
+          "first_relevant_rank": 1,
+          "evidence": "1/1"
+        },
+        {
+          "id": "m01",
+          "tag": "multi",
+          "first_relevant_rank": 1,
+          "evidence": "4/4"
+        },
+        {
+          "id": "m02",
+          "tag": "multi",
+          "first_relevant_rank": 1,
+          "evidence": "2/2"
+        },
+        {
+          "id": "m03",
+          "tag": "multi",
+          "first_relevant_rank": 2,
+          "evidence": "1/1"
+        },
+        {
+          "id": "m04",
+          "tag": "multi",
+          "first_relevant_rank": 3,
+          "evidence": "2/2"
+        },
+        {
+          "id": "m05",
+          "tag": "multi",
+          "first_relevant_rank": 8,
+          "evidence": "1/2"
+        },
+        {
+          "id": "m06",
+          "tag": "multi",
+          "first_relevant_rank": 1,
+          "evidence": "2/2"
+        },
+        {
+          "id": "m07",
+          "tag": "multi",
+          "first_relevant_rank": 1,
+          "evidence": "2/2"
+        }
+      ]
+    }
+  }
+}
