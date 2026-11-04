@@ -4,7 +4,17 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, IdMixin, TimestampMixin
@@ -90,6 +100,9 @@ class Collection(IdMixin, TimestampMixin, Base):
         _enum(ChunkingStrategy), default=ChunkingStrategy.RECURSIVE
     )
     embed_model: Mapped[str] = mapped_column(String(200), default="BAAI/bge-small-en-v1.5")
+    # Validated ChunkingConfig as JSON; fixed at creation, like the strategy (changing either
+    # means re-indexing, Phase 2.8). Missing keys fall back to the ChunkingConfig defaults.
+    chunking_config: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'"))
 
     workspace: Mapped[Workspace] = relationship(back_populates="collections")
     documents: Mapped[list["Document"]] = relationship(
