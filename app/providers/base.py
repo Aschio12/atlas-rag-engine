@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -32,6 +33,14 @@ class LLMResponse:
     text: str
     model: str
     usage: Usage = field(default_factory=Usage)
+
+
+@dataclass(frozen=True)
+class StreamChunk:
+    """A piece of a streamed completion: some text, or (last) the usage the provider reported."""
+
+    text: str = ""
+    usage: Usage | None = None
 
 
 @dataclass(frozen=True)
@@ -124,6 +133,20 @@ class LLM(ABC):
         temperature: float = 0.2,
         max_tokens: int = 1024,
     ) -> LLMResponse: ...
+
+    async def stream(
+        self,
+        messages: list[ChatMessage],
+        *,
+        temperature: float = 0.2,
+        max_tokens: int = 1024,
+    ) -> AsyncIterator[StreamChunk]:
+        """The completion as it is produced. Providers that can stream override this; the
+        default waits for the whole completion and yields it as one chunk, so callers can always
+        use `stream`. The last chunk carries the usage when it is known."""
+        response = await self.complete(messages, temperature=temperature, max_tokens=max_tokens)
+        yield StreamChunk(response.text)
+        yield StreamChunk(usage=response.usage)
 
 
 class Embedder(ABC):
@@ -235,3 +258,26 @@ async def post_json(
             provider, f"HTTP {resp.status_code}: {resp.text[:200]}", resp.status_code
         )
     return resp
+
+
+async def stream_lines(
+    client: httpx.AsyncClient,
+    provider: str,
+    url: str,
+    *,
+    json: dict,
+    headers: dict[str, str] | None = None,
+) -> AsyncIterator[str]:
+    """POST and yield the response body line by line as it arrives, turning transport failures,
+    HTTP errors and a connection that drops mid-stream into ProviderError."""
+    try:
+        async with client.stream("POST", url, json=json, headers=headers) as resp:
+            if resp.status_code >= 400:
+                body = (await resp.aread()).decode("utf-8", errors="replace")
+                raise ProviderError(
+                    provider, f"HTTP {resp.status_code}: {body[:200]}", resp.status_code
+                )
+            async for line in resp.aiter_lines():
+                yield line
+    except httpx.HTTPError as exc:
+        raise ProviderError(provider, f"request failed: {type(exc).__name__}") from exc
