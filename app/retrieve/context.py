@@ -247,10 +247,9 @@ def add_blocks(
             score=max(b.score for b in group),
             first=min((b.first for b in group), key=lambda h: h.char_start),
             order=best.order,
-            notes=[
-                *dict.fromkeys(n for b in group for n in b.notes),
-                "merged overlapping passages",
-            ],
+            notes=list(
+                dict.fromkeys([*(n for b in group for n in b.notes), "merged overlapping passages"])
+            ),
         )
         result = [b for b in result if all(b is not t for t in touching)]
         result.append(merged)

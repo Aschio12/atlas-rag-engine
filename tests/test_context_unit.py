@@ -220,3 +220,9 @@ def test_add_blocks_bridges_a_blank_gap_between_a_new_and_an_existing_block():
     (merged,) = add_blocks([a], [b], Joiner({DOC: SPACED}))
     assert merged.text == SPACED[:TWO]
     assert len(add_blocks([a], [b])) == 2  # no text: stays apart
+
+
+def test_merge_notes_are_not_repeated_when_blocks_merge_again():
+    a, b, c = _block(piece(0, 50), DOC), _block(piece(40, 90), DOC), _block(piece(80, 120), DOC)
+    (merged,) = add_blocks(add_blocks([a], [b]), [c])
+    assert merged.notes.count("merged overlapping passages") == 1
