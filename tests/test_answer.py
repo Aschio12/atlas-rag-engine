@@ -123,6 +123,8 @@ async def test_the_model_can_abstain_itself_with_not_found(client, app, ready):
         "I couldn't find this in your documents. The documents do not say how refunds are taxed."
     )
     assert out["citations"] == [] and out["related"]
+    assert out["confidence"]["level"] == "none"
+    assert out["confidence"]["reasons"][-1] == "the model found no answer in the sources"
 
 
 async def test_an_abstain_threshold_can_be_raised_per_request(client, ready):
