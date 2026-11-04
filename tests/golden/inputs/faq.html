@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Help &amp; FAQ | Example Co</title>
+<meta name="description" content="Answers to common questions">
+<script>window.analytics = {id: "SECRET-TRACKING-ID"};</script>
+<style>.hidden { display: none }</style>
+</head>
+<body>
+<nav><a href="/">Home</a> | <a href="/pricing">Pricing</a> | <a href="/login">Log in</a></nav>
+<header><h1>Frequently asked questions</h1></header>
+<main>
+<h2>Billing</h2>
+<p>We charge <b>monthly</b>. Prices are listed in &euro; &amp; include VAT.<br>
+Invoices are emailed on the 1st.</p>
+<ul>
+  <li>Cancel any time</li>
+  <li>Refunds within <em>14 days</em>
+    <ul><li>Pro-rated after that</li></ul>
+  </li>
+</ul>
+<h2>Plans</h2>
+<table>
+<tr><th>Plan</th><th>Seats</th><th>Price</th></tr>
+<tr><td>Free</td><td>1</td><td>&euro;0</td></tr>
+<tr><td>Team</td><td>10</td><td>&euro;49</td></tr>
+</table>
+<h3>Technical</h3>
+<pre>curl -H "Authorization: Bearer $TOKEN" \
+     https://api.example.com/v1/me</pre>
+<div hidden>internal note: do not show</div>
+<p aria-hidden="true">decorative icon text</p>
+</main>
+<form action="/subscribe"><input name="email"><button>Subscribe</button></form>
+<footer>&copy; 2026 Example Co. All rights reserved.</footer>
+</body>
+</html>
