@@ -176,3 +176,64 @@ def test_too_many_conditions_are_rejected():
 def test_the_summary_describes_each_condition_for_the_trace():
     out = compiled(("language", "in", ["en", "de"]), ("page", "lte", 10), ("title", "ne", "X"))
     assert out.summary == ("language in ['en', 'de']", "page lte 10", "title ne 'X'")
+
+
+# ---- user-defined attributes -------------------------------------------------------------------
+
+
+def test_attribute_conditions_target_the_nested_payload_key():
+    out = compiled(
+        ("attr.year", "gte", 2020), ("attr.year", "lt", 2025), ("attr.author", "eq", "Chen"),
+        ("attr.tags", "in", ["rag", "eval"]), ("attr.draft", "eq", False),
+    )  # fmt: skip
+    assert out.filters == {
+        "attributes.year": Range(gte=2020, lt=2025),
+        "attributes.author": "Chen",  # text keeps its case
+        "attributes.tags": ["rag", "eval"],
+        "attributes.draft": False,
+    }
+    assert out.summary[0] == "attr.year gte 2020"
+
+
+def test_attribute_exclusions_merge_like_any_other_field():
+    out = compiled(("attr.author", "ne", "Chen"), ("attr.author", "nin", ["Li", "Chen"]))
+    assert out.exclude == {"attributes.author": ["Chen", "Li"]}
+
+
+def test_attribute_ranges_need_numbers_and_lists_need_whole_values():
+    with pytest.raises(ValidationError, match="needs a number"):
+        cond("attr.author", "gte", "Chen")
+    with pytest.raises(ValidationError, match="needs a number"):
+        cond("attr.year", "gt", True)
+    with pytest.raises(ValidationError, match="text or whole numbers"):
+        cond("attr.score", "in", [0.5])
+    assert compiled(("attr.score", "gte", 0.5)).filters["attributes.score"] == Range(gte=0.5)
+
+
+@pytest.mark.parametrize(
+    "name", ["attr.Year", "attr.", "attr.a-b", "attr.1x", "attr." + "x" * 41, "attribute.year"]
+)
+def test_malformed_attribute_names_are_rejected(name):
+    with pytest.raises(ValidationError, match="unknown filter field"):
+        cond(name, "eq", "x")
+
+
+def test_booleans_are_only_allowed_for_attributes():
+    assert compiled(("attr.reviewed", "eq", True)).filters == {"attributes.reviewed": True}
+    with pytest.raises(ValidationError):
+        cond("language", "eq", True)
+
+
+def test_attribute_values_are_trimmed_and_bounded():
+    assert compiled(("attr.author", "eq", "  Chen ")).filters == {"attributes.author": "Chen"}
+    with pytest.raises(ValidationError):
+        cond("attr.author", "eq", "  ")
+    with pytest.raises(ValidationError):
+        cond("attr.author", "eq", "x" * 501)
+
+
+def test_attribute_conditions_conflict_like_other_fields():
+    with pytest.raises(FilterError):
+        compiled(("attr.year", "eq", 2020), ("attr.year", "gte", 2019))
+    with pytest.raises(FilterError):
+        compiled(("attr.year", "gte", 2025), ("attr.year", "lt", 2020))
