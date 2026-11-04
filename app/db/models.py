@@ -103,6 +103,8 @@ class Collection(IdMixin, TimestampMixin, Base):
     # Validated ChunkingConfig as JSON; fixed at creation, like the strategy (changing either
     # means re-indexing, Phase 2.8). Missing keys fall back to the ChunkingConfig defaults.
     chunking_config: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'"))
+    # Validated EnrichmentConfig as JSON (Phase 2.5); missing keys fall back to its defaults.
+    enrichment_config: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'"))
 
     workspace: Mapped[Workspace] = relationship(back_populates="collections")
     documents: Mapped[list["Document"]] = relationship(
@@ -161,6 +163,7 @@ class JobState(enum.StrEnum):
     QUEUED = "queued"
     PARSING = "parsing"
     CHUNKING = "chunking"
+    ENRICHING = "enriching"
     EMBEDDING = "embedding"
     INDEXING = "indexing"
     DONE = "done"
@@ -177,6 +180,8 @@ class IngestJob(IdMixin, TimestampMixin, Base):
     progress: Mapped[int] = mapped_column(Integer, default=0)  # 0-100
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str | None] = mapped_column(Text)
+    # Per-run switches, e.g. {"reparse": false} to rebuild chunks and vectors from stored text.
+    options: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'"))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Queue bookkeeping: a queued job is not picked up before `run_after` (retry backoff), and a

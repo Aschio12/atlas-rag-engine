@@ -18,7 +18,7 @@ Guarantees
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import and_, or_, select, update
@@ -26,7 +26,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import IngestJob, JobState
 
-RUNNING_STATES = (JobState.PARSING, JobState.CHUNKING, JobState.EMBEDDING, JobState.INDEXING)
+RUNNING_STATES = (
+    JobState.PARSING,
+    JobState.CHUNKING,
+    JobState.ENRICHING,
+    JobState.EMBEDDING,
+    JobState.INDEXING,
+)
 ACTIVE_STATES = (JobState.QUEUED, *RUNNING_STATES)
 TERMINAL_STATES = (JobState.DONE, JobState.FAILED)
 
@@ -45,9 +51,12 @@ class Claim:
     job_id: uuid.UUID
     document_id: uuid.UUID
     attempts: int  # including this one
+    options: dict = field(default_factory=dict)  # per-run switches set at enqueue time
 
 
-async def enqueue(session: AsyncSession, document_id: uuid.UUID) -> IngestJob:
+async def enqueue(
+    session: AsyncSession, document_id: uuid.UUID, options: dict | None = None
+) -> IngestJob:
     """Add a job for a document. The caller commits, so the document and its job appear together.
 
     A document never has two active jobs: if one is already queued or running it is returned.
@@ -61,7 +70,9 @@ async def enqueue(session: AsyncSession, document_id: uuid.UUID) -> IngestJob:
     ).scalar_one_or_none()
     if existing is not None:
         return existing
-    job = IngestJob(id=uuid.uuid4(), document_id=document_id, state=JobState.QUEUED)
+    job = IngestJob(
+        id=uuid.uuid4(), document_id=document_id, state=JobState.QUEUED, options=options or {}
+    )
     session.add(job)
     return job
 
@@ -100,7 +111,13 @@ async def claim(
         for _ in range(5):  # a lost race just moves on to the next candidate
             row = (
                 await session.execute(
-                    select(IngestJob.id, IngestJob.document_id, IngestJob.state, IngestJob.attempts)
+                    select(
+                        IngestJob.id,
+                        IngestJob.document_id,
+                        IngestJob.state,
+                        IngestJob.attempts,
+                        IngestJob.options,
+                    )
                     .where(runnable)
                     .order_by(IngestJob.created_at, IngestJob.id)
                     .limit(1)
@@ -128,7 +145,7 @@ async def claim(
             )
             await session.commit()
             if won.rowcount:
-                return Claim(row.id, row.document_id, row.attempts + 1)
+                return Claim(row.id, row.document_id, row.attempts + 1, dict(row.options or {}))
     return None
 
 
@@ -186,6 +203,16 @@ async def advance(
             progress=max(0, min(progress, 99)),
             locked_until=utcnow() + timedelta(seconds=lease_s),
         )
+    )
+    return bool(res.rowcount)
+
+
+async def set_progress(session: AsyncSession, c: Claim, progress: int) -> bool:
+    """Report progress inside a long stage (never reaching 100: only completion does that)."""
+    res = await session.execute(
+        update(IngestJob)
+        .where(_mine(c), IngestJob.state.in_(RUNNING_STATES))
+        .values(progress=max(0, min(progress, 99)))
     )
     return bool(res.rowcount)
 

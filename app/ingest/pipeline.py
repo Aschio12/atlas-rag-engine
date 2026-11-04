@@ -9,7 +9,7 @@ idempotent because delivery is at-least-once.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +24,10 @@ class PermanentError(Exception):
     """A failure that will not go away by retrying. `str(error)` is safe to show to the user."""
 
 
+async def _no_progress(fraction: float) -> None:
+    return None
+
+
 @dataclass
 class StageContext:
     session: AsyncSession
@@ -33,6 +37,9 @@ class StageContext:
     document: Document
     collection: Collection
     ocr: OcrEngine | None = None
+    options: dict = field(default_factory=dict)  # per-job switches, e.g. {"reparse": False}
+    # Report progress within the stage: 0.0 (just started) to 1.0 (finished).
+    progress: Callable[[float], Awaitable[None]] = _no_progress
 
 
 Stage = Callable[[StageContext], Awaitable[None]]

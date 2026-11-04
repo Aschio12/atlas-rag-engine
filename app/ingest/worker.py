@@ -170,6 +170,14 @@ class Worker:
                 if document is None:
                     return False  # deleted while queued/running
                 collection = await s.get(Collection, document.collection_id)
+                low, high = 100 * index // total, 100 * (index + 1) // total
+
+                async def report(fraction: float, low=low, high=high) -> None:
+                    value = low + int((high - low) * max(0.0, min(fraction, 1.0)))
+                    async with self.sessionmaker() as ps:
+                        await queue.set_progress(ps, claim, value)
+                        await ps.commit()
+
                 await stage(
                     StageContext(
                         session=s,
@@ -179,6 +187,8 @@ class Worker:
                         document=document,
                         collection=collection,
                         ocr=self.ocr,
+                        options=claim.options,
+                        progress=report,
                     )
                 )
                 await s.commit()
