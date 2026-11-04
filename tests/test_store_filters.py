@@ -105,3 +105,10 @@ def test_a_range_needs_a_numeric_bound():
 async def test_the_store_rejects_bad_filters_too(store):
     with pytest.raises(ValueError):
         await store.search("c", [1.0, 0.0], 3, filters={"language": []})
+
+
+async def test_get_vectors_returns_the_stored_dense_vectors_and_skips_unknown_ids(store):
+    got = await store.get_vectors("c", ["a", "zzz", "d"])
+    assert got == {"a": [1.0, 0.0], "d": [1.0, 0.0]}
+    assert await store.get_vectors("c", []) == {}
+    assert await store.get_vectors("missing", ["a"]) == {}

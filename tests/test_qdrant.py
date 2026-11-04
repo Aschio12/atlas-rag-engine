@@ -293,3 +293,31 @@ async def test_existing_collections_gain_the_indexes_they_lack():
     await store(handler).ensure_collection("c", 8, sparse=True)
     created = [path for method, path in calls if method == "PUT"]
     assert len(created) == len(INDEXED_FIELDS) - 3  # only the ones missing
+
+
+async def test_get_vectors_asks_for_the_dense_vector_only_and_maps_ids():
+    seen = {}
+
+    def handler(req):
+        seen["path"], seen["body"] = req.url.path, body_of(req)
+        return httpx.Response(
+            200, json={"result": [{"id": ID, "vector": {"dense": [0.5, 0.25], "sparse": {}}}]}
+        )
+
+    got = await store(handler).get_vectors("c", [ID])
+    assert got == {ID: [0.5, 0.25]}
+    assert seen["path"] == "/collections/c/points"
+    assert seen["body"] == {"ids": [ID], "with_vector": ["dense"], "with_payload": False}
+
+
+async def test_get_vectors_handles_missing_collections_empty_input_and_bad_shapes():
+    assert await store(lambda r: httpx.Response(404, json={})).get_vectors("c", [ID]) == {}
+
+    def never(req):
+        raise AssertionError("no request expected")
+
+    assert await store(never).get_vectors("c", []) == {}
+    with pytest.raises(ProviderError, match="response shape"):
+        await store(lambda r: httpx.Response(200, json={"result": [{"id": ID}]})).get_vectors(
+            "c", [ID]
+        )
