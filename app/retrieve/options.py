@@ -7,6 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.retrieve.selfquery import SelfQueryOptions
 from app.retrieve.transform import TransformOptions
 
 Mode = Literal["dense", "sparse", "hybrid"]
@@ -77,6 +78,7 @@ class RetrievalOptions(BaseModel):
     fusion: FusionOptions = Field(default_factory=FusionOptions)
     rerank: RerankOptions = Field(default_factory=RerankOptions)
     transforms: TransformOptions = Field(default_factory=TransformOptions)
+    self_query: SelfQueryOptions = Field(default_factory=SelfQueryOptions)
     context: ContextOptions = Field(default_factory=ContextOptions)
 
     @model_validator(mode="after")

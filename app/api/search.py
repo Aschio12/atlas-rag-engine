@@ -13,10 +13,9 @@ from app.core.auth import ViewerAccess
 from app.core.deps import SessionDep
 from app.core.errors import BadRequest, NotFound
 from app.db.models import Collection
+from app.retrieve.catalogue import build_catalogue
 from app.retrieve.filters import (
-    FIELDS,
     MAX_CONDITIONS,
-    CompiledFilter,
     FilterError,
     MetadataFilter,
     compile_filters,
@@ -123,6 +122,7 @@ class SearchOut(BaseModel):
     trace: TraceOut
     warnings: list[str]
     context: ContextOut | None = None
+    inferred_filters: list[MetadataFilter] = []
 
 
 class FieldOut(BaseModel):
@@ -130,6 +130,11 @@ class FieldOut(BaseModel):
     type: str
     ops: list[str]
     description: str
+    values: list[Any] = Field(default_factory=list, description="Distinct values seen, if any")
+    complete: bool = Field(False, description="True when `values` is every value there is")
+    minimum: float | None = None
+    maximum: float | None = None
+    documents: int | None = Field(None, description="Documents that have this attribute")
 
 
 def _hit_out(h: Hit) -> HitOut:
@@ -180,7 +185,7 @@ async def search(body: SearchRequest, access: ViewerAccess, session: SessionDep,
             access.workspace.id,
             collections,
             RetrievalOptions(**body.model_dump(include=set(RetrievalOptions.model_fields))),
-            compile_filters(body.filters) if body.filters else CompiledFilter(),
+            body.filters,
             body.history,
         )
     except RerankUnavailable as e:
@@ -192,13 +197,14 @@ async def search(body: SearchRequest, access: ViewerAccess, session: SessionDep,
         trace=_trace_out(result.trace),
         warnings=result.warnings,
         context=_context_out(result.context),
+        inferred_filters=result.inferred,
     )
 
 
 @router.get("/workspaces/{workspace_id}/search/fields", response_model=list[FieldOut])
-async def filterable_fields(access: ViewerAccess):
-    """The fields a search can filter on, and the operators each accepts."""
-    return [
-        FieldOut(name=name, type=spec.kind, ops=list(spec.ops), description=spec.description)
-        for name, spec in FIELDS.items()
-    ]
+async def filterable_fields(access: ViewerAccess, session: SessionDep):
+    """The fields a search can filter on: the built-in ones, and the document attributes that
+    exist in this workspace (`attr.<name>`), each with the operators it accepts and the values
+    seen. This is also what the self-query step shows the model."""
+    catalogue = await build_catalogue(session, access.workspace.id)
+    return [FieldOut(**vars(info)) for info in catalogue]

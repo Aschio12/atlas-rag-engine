@@ -13,6 +13,7 @@ import asyncio
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, date, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,14 +21,23 @@ from app.db.models import Collection
 from app.providers.errors import ProviderError
 from app.providers.registry import Providers
 from app.retrieve.candidates import Candidate, fetch_size, search_dense, search_sparse
+from app.retrieve.catalogue import build_catalogue
 from app.retrieve.context import ContextAssembler
-from app.retrieve.filters import CompiledFilter
+from app.retrieve.filters import MetadataFilter, compile_filters
 from app.retrieve.fusion import Fused, reciprocal_rank_fusion, weighted_fusion
 from app.retrieve.hits import build_hit, matched_terms
 from app.retrieve.options import RetrievalOptions
 from app.retrieve.rerank import RerankUnavailable, rerank_hits
 from app.retrieve.resolve import Row, chunk_id_of, load_rows, resolve
-from app.retrieve.transform import Turn, Variant, transform_query
+from app.retrieve.selfquery import infer_filters
+from app.retrieve.transform import (
+    QueryTransformer,
+    TransformResult,
+    Turn,
+    Variant,
+    apply_expansions,
+    apply_rewrite,
+)
 from app.retrieve.types import Hit, RetrievalResult, RetrievalTrace
 from app.storage import BlobStore
 
@@ -60,6 +70,15 @@ class Channel:
         return {chunk_id_of(c.point): (rank, c) for rank, c in enumerate(self.candidates, start=1)}
 
 
+def today() -> date:
+    """Today in UTC (a function so tests can pin it)."""
+    return datetime.now(UTC).date()
+
+
+def _needs_llm(options: RetrievalOptions) -> bool:
+    return options.transforms.any or options.self_query.enabled
+
+
 def make_jobs(primary: str, variants: list[Variant], mode: str) -> list[Job]:
     kinds = ["dense", "sparse"] if mode == "hybrid" else [mode]
     jobs = [Job(kind, kind, primary) for kind in kinds]
@@ -82,13 +101,14 @@ class RetrievalPipeline:
         workspace_id: uuid.UUID,
         collections: list[Collection],
         options: RetrievalOptions | None = None,
-        metadata: CompiledFilter | None = None,
+        filters: list[MetadataFilter] | None = None,
         history: list[Turn] | None = None,
     ) -> RetrievalResult:
         if any(c.workspace_id != workspace_id for c in collections):
             raise ValueError("every searched collection must belong to the workspace")
         options = options or RetrievalOptions()
-        metadata = metadata or CompiledFilter()
+        explicit = filters or []
+        metadata = compile_filters(explicit)
         reranker = self._providers.reranker if options.rerank.enabled else None
         if options.rerank.enabled and reranker is None:
             raise RerankUnavailable("Reranking was requested but RERANK_PROVIDER is not set")
@@ -109,17 +129,141 @@ class RetrievalPipeline:
         if not collections:
             return RetrievalResult([], trace)
 
-        primary, variants = query, []
-        if options.transforms.any:
-            primary, variants = await self._transform(
-                query, history or [], options, trace, warnings
+        # 1. make the question stand alone, 2. read filters out of it, 3. add extra searches
+        text = query
+        tf = QueryTransformer(self._providers.llm) if _needs_llm(options) else None
+        if options.transforms.rewrite:
+            text = await self._rewrite(tf, query, history or [], options, trace, warnings)
+        search_text, inferred = text, []
+        if options.self_query.enabled:
+            search_text, inferred = await self._self_query(
+                text, workspace_id, collections, explicit, trace, warnings
+            )
+        variants: list[Variant] = []
+        if options.transforms.expansions:
+            variants = await self._expand(tf, search_text, options, trace, warnings)
+
+        full = compile_filters([*explicit, *inferred]) if inferred else metadata
+        ranked = await self._retrieve(
+            search_text,
+            variants,
+            workspace_id,
+            collections,
+            full,
+            options,
+            reranker,
+            trace,
+            warnings,
+        )
+        if not ranked and inferred and options.self_query.fallback:
+            shown = ", ".join(f"{c.field} {c.op} {c.value!r}" for c in inferred)
+            warnings.append(
+                f"No passages matched the inferred filters ({shown}); searched without them"
+            )
+            trace.add(
+                "self_query_fallback", time.perf_counter(), dropped=[c.field for c in inferred]
+            )
+            inferred = []
+            ranked = await self._retrieve(
+                text,
+                variants,
+                workspace_id,
+                collections,
+                metadata,
+                options,
+                reranker,
+                trace,
+                warnings,
             )
 
-        jobs = make_jobs(primary, variants, options.mode)
+        hits = ranked[: options.top_k]
+        trace.add("result", time.perf_counter(), returned=len(hits))
+        context = None
+        if options.context.enabled:
+            started = time.perf_counter()
+            assembler = ContextAssembler(self._session, self._providers.vector_store, self._blobs)
+            context, details = await assembler.assemble(ranked, options.context)
+            trace.add("context", started, **details)
+        return RetrievalResult(hits, trace, warnings, context, inferred)
+
+    # -- stages ------------------------------------------------------------------------------
+
+    async def _rewrite(self, tf, query, history, options, trace, warnings) -> str:
+        started = time.perf_counter()
+        result = TransformResult(primary=query)
+        await apply_rewrite(tf, result, history, options.transforms)
+        warnings.extend(result.warnings)
+        trace.add(
+            "rewrite",
+            started,
+            original=query,
+            rewritten=result.primary,
+            skipped=result.skipped,
+            took_ms=result.took_ms,
+        )
+        return result.primary
+
+    async def _self_query(self, text, workspace_id, collections, explicit, trace, warnings):
+        started = time.perf_counter()
+        catalogue = await build_catalogue(self._session, workspace_id, [c.id for c in collections])
+        result = await infer_filters(self._providers.llm, text, catalogue, explicit, today=today())
+        warnings.extend(result.warnings)
+        trace.add(
+            "self_query",
+            started,
+            original=text,
+            query=result.query,
+            inferred=[f"{c.field} {c.op} {c.value!r}" for c in result.conditions],
+            rejected=result.rejected,
+            tokens={
+                "prompt": result.usage.prompt_tokens,
+                "completion": result.usage.completion_tokens,
+            },
+        )
+        return result.query, result.conditions
+
+    async def _expand(self, tf, text, options, trace, warnings) -> list[Variant]:
+        started = time.perf_counter()
+        result = TransformResult(primary=text)
+        calls_before = tf.calls
+        await apply_expansions(tf, result, options.transforms, mode=options.mode)
+        warnings.extend(result.warnings)
+        trace.add(
+            "transform",
+            started,
+            enabled=sorted(
+                k
+                for k, v in options.transforms.model_dump().items()
+                if v is True and k != "rewrite"
+            ),
+            primary=text,
+            variants=[
+                {"label": v.label, "text": v.text, "channels": list(v.kinds)}
+                for v in result.variants
+            ],
+            skipped=result.skipped,
+            llm_calls=tf.calls - calls_before,
+            took_ms=result.took_ms,
+        )
+        return result.variants
+
+    async def _retrieve(
+        self,
+        text,
+        variants,
+        workspace_id,
+        collections,
+        metadata,
+        options,
+        reranker,
+        trace,
+        warnings,
+    ) -> list[Hit]:
+        """Search, fuse and rerank: the ranked candidates, best first, ranks numbered."""
+        jobs = make_jobs(text, variants, options.mode)
         channels, rows = await self._search(
             jobs, workspace_id, collections, metadata, options, trace
         )
-
         window = options.top_k
         if reranker is not None:
             window = max(window, options.rerank.candidates)
@@ -127,43 +271,10 @@ class RetrievalPipeline:
             window = max(window, options.context.pool)
         ranked = self._rank(channels, rows, options, trace, window)
         if reranker is not None:
-            ranked = await self._rerank(reranker, primary, ranked, trace, warnings)
+            ranked = await self._rerank(reranker, text, ranked, trace, warnings)
         for rank, hit in enumerate(ranked, start=1):
             hit.rank = rank
-        hits = ranked[: options.top_k]
-        trace.add("result", time.perf_counter(), returned=len(hits))
-
-        context = None
-        if options.context.enabled:
-            started = time.perf_counter()
-            assembler = ContextAssembler(self._session, self._providers.vector_store, self._blobs)
-            context, details = await assembler.assemble(ranked, options.context)
-            trace.add("context", started, **details)
-        return RetrievalResult(hits, trace, warnings, context)
-
-    # -- stages ------------------------------------------------------------------------------
-
-    async def _transform(self, query, history, options, trace, warnings):
-        started = time.perf_counter()
-        tr = await transform_query(
-            self._providers.llm, query, history, options.transforms, mode=options.mode
-        )
-        warnings.extend(tr.warnings)
-        trace.add(
-            "transform",
-            started,
-            enabled=sorted(k for k, v in options.transforms.model_dump().items() if v is True),
-            original=query,
-            primary=tr.primary,
-            variants=[
-                {"label": v.label, "text": v.text, "channels": list(v.kinds)} for v in tr.variants
-            ],
-            skipped=tr.skipped,
-            llm_calls=tr.llm_calls,
-            tokens={"prompt": tr.usage.prompt_tokens, "completion": tr.usage.completion_tokens},
-            took_ms=tr.took_ms,
-        )
-        return tr.primary, tr.variants
+        return ranked
 
     async def _search(self, jobs, workspace_id, collections, metadata, options, trace):
         store = self._providers.vector_store

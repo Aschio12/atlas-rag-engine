@@ -87,3 +87,4 @@ class RetrievalResult:
     trace: RetrievalTrace
     warnings: list[str] = field(default_factory=list)  # degraded behaviour the caller should see
     context: ContextResult | None = None
+    inferred: list = field(default_factory=list)  # filters read out of the question (self-query)
