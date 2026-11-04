@@ -439,7 +439,11 @@ class AnswerService:
             yield Event(
                 "done",
                 self._abstained(
-                    base, "model_not_found", f"{NOT_FOUND_MESSAGE} {note}".strip(), before,
+                    base, "model_not_found", f"{NOT_FOUND_MESSAGE} {note}".strip(),
+                    conf.Confidence(
+                        0.0, "none", before.signals,
+                        [*before.reasons, "the model found no answer in the sources"],
+                    ),
                     blocks, sources, trace, started, retrieved_ms, policy, usage_data,
                 ),
             )  # fmt: skip
