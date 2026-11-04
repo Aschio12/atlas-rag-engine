@@ -6,10 +6,12 @@ A search request carries a list of conditions, all of which must hold:
     {"field": "created_at", "op": "gte", "value": "2023-01-01"}
     {"field": "page",       "op": "lte", "value": 10}
 
-Only the fields below can be filtered on. That is deliberate: a field is filterable when it is
-stored (and indexed) in the vector payload, and the allow-list is what keeps a request, or an LLM
-writing filters for it in Phase 3.7, from reaching `workspace_id`, `collection_id` or anything
-else the server fixes itself. Workspace and collection scoping is never part of this language.
+Only the fields below can be filtered on, plus the user-defined document attributes, written
+`attr.<name>` (for example `attr.year`). That is deliberate: a field is filterable when it is
+stored in the vector payload, and the allow-list is what keeps a request, or an LLM writing
+filters for it (the self-query in Phase 3.7), from reaching `workspace_id`, `collection_id` or
+anything else the server fixes itself. Workspace and collection scoping is never part of this
+language.
 
 `compile_filters` turns the conditions into the store's `filters` and `exclude` mappings.
 """
@@ -45,14 +47,14 @@ class FilterError(ValueError):
 @dataclass(frozen=True)
 class FieldSpec:
     key: str  # payload field in the vector store
-    kind: Literal["keyword", "lower", "uuid", "integer", "datetime"]
+    kind: Literal["keyword", "lower", "uuid", "integer", "datetime", "attr"]
     description: str
 
     @property
     def ops(self) -> tuple[str, ...]:
         if self.kind in ("keyword", "lower", "uuid"):
             return (*SET_OPS, *NOT_OPS)
-        if self.kind == "integer":
+        if self.kind in ("integer", "attr"):
             return (*SET_OPS, *NOT_OPS, *RANGE_OPS)
         return RANGE_OPS  # datetimes are compared by range only
 
@@ -69,39 +71,51 @@ FIELDS: dict[str, FieldSpec] = {
     "created_at": FieldSpec("created_at", "datetime", "When the document was added"),
 }
 
-FilterField = Literal[
-    "document_id",
-    "source_id",
-    "source_type",
-    "file_type",
-    "language",
-    "title",
-    "heading",
-    "page",
-    "created_at",
-]
+ATTR_PREFIX = "attr."
+_ATTR_NAME = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
+
+
+def spec_for(name: str) -> FieldSpec | None:
+    """The spec of a filterable field: a built-in one, or `attr.<name>` for an attribute."""
+    if spec := FIELDS.get(name):
+        return spec
+    if name.startswith(ATTR_PREFIX) and _ATTR_NAME.match(name[len(ATTR_PREFIX) :]):
+        key = name[len(ATTR_PREFIX) :]
+        return FieldSpec(f"attributes.{key}", "attr", f"Document attribute '{key}'")
+    return None
 
 
 class MetadataFilter(BaseModel):
     """One condition. `value` is a single value, or a non-empty list for `in` and `nin`."""
 
-    field: FilterField
+    field: str
     op: Op = "eq"
-    value: str | int | float | list[str | int | float]
+    value: bool | int | float | str | list[bool | int | float | str]
+
+    @field_validator("field")
+    @classmethod
+    def _known_field(cls, name: str) -> str:
+        if spec_for(name) is None:
+            raise ValueError(
+                f"unknown filter field {name!r}; use one of {', '.join(FIELDS)} or attr.<name>"
+            )
+        return name
 
     @field_validator("value", mode="before")
     @classmethod
-    def _no_booleans(cls, value: Any) -> Any:
-        # Left alone, pydantic would quietly turn true into 1.
+    def _no_booleans(cls, value: Any, info) -> Any:
+        # Left alone, pydantic would quietly turn true into 1. Only attributes can be booleans.
+        if str(info.data.get("field", "")).startswith(ATTR_PREFIX):
+            return value
         if isinstance(value, bool) or (
             isinstance(value, list) and any(isinstance(v, bool) for v in value)
         ):
-            raise ValueError("booleans are not valid filter values")
+            raise ValueError("booleans are not valid filter values for this field")
         return value
 
     @model_validator(mode="after")
     def _check(self) -> MetadataFilter:
-        spec = FIELDS[self.field]
+        spec = spec_for(self.field)
         if self.op not in spec.ops:
             raise ValueError(
                 f"'{self.op}' is not supported for '{self.field}' (use: {', '.join(spec.ops)})"
@@ -142,9 +156,31 @@ def _coerce_datetime(op: str, value: Any) -> int:
     return int(moment.timestamp())
 
 
+def _coerce_attr(name: str, op: str, value: Any) -> Any:
+    """Attribute values are compared as stored: text keeps its case, numbers stay numbers."""
+    if op in RANGE_OPS:
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise ValueError(f"'{op}' on '{name}' needs a number")
+        return value
+    if isinstance(value, bool) or isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if op in ("in", "nin"):
+            raise ValueError(f"'{op}' on '{name}' takes text or whole numbers")
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or len(text) > MAX_TEXT:
+            raise ValueError(f"'{name}' values must be 1 to {MAX_TEXT} characters")
+        return text
+    raise ValueError(f"'{name}' takes text, a number or true/false")
+
+
 def _coerce(name: str, op: str, value: Any) -> Any:
     """Validate one value for a field and convert it to what the payload stores."""
-    kind = FIELDS[name].kind
+    kind = spec_for(name).kind
+    if kind == "attr":
+        return _coerce_attr(name, op, value)
     if kind == "datetime":
         return _coerce_datetime(op, value)
     if kind == "integer":
@@ -196,7 +232,7 @@ def compile_filters(conditions: list[MetadataFilter]) -> CompiledFilter:
     summary: list[str] = []
 
     for c in conditions:
-        spec = FIELDS[c.field]
+        spec = spec_for(c.field)
         raw = c.value if isinstance(c.value, list) else [c.value]
         values = [_coerce(c.field, c.op, v) for v in raw]
         shown = values[0] if len(values) == 1 else values
