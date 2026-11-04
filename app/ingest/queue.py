@@ -71,7 +71,13 @@ async def enqueue(
     if existing is not None:
         return existing
     job = IngestJob(
-        id=uuid.uuid4(), document_id=document_id, state=JobState.QUEUED, options=options or {}
+        id=uuid.uuid4(),
+        document_id=document_id,
+        state=JobState.QUEUED,
+        options=options or {},
+        # Set here (microseconds) rather than by the database default: SQLite's now() has
+        # one-second resolution, which made "the latest job of a document" ambiguous.
+        created_at=utcnow(),
     )
     session.add(job)
     return job
