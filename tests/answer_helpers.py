@@ -84,3 +84,23 @@ class LeakyLLM(SpyLLM):
 def use_llm(app, llm):
     app.state.providers._llm = llm
     return llm
+
+
+async def add_member(client, app, space, email, role):
+    """Sign `email` up, make them a member of the workspace with `role`, return a space dict for
+    them (same workspace, their own headers)."""
+    import uuid
+
+    from sqlalchemy import select
+
+    from app.db.models import User, WorkspaceMember
+
+    password = "correct-horse-9"
+    await client.post("/v1/auth/register", json={"email": email, "password": password})
+    login = await client.post("/v1/auth/login", json={"email": email, "password": password})
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    async with app.state.sessionmaker() as s:
+        uid = (await s.execute(select(User.id).where(User.email == email))).scalar_one()
+        s.add(WorkspaceMember(workspace_id=uuid.UUID(space["ws"]), user_id=uid, role=role))
+        await s.commit()
+    return {**space, "headers": headers}
