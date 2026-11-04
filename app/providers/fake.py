@@ -112,8 +112,18 @@ def _one(value: Any, cond: Any) -> bool:
     return value == cond
 
 
+def _lookup(payload: dict[str, Any], key: str) -> Any:
+    """`attributes.year` reads payload["attributes"]["year"] (a missing step gives None)."""
+    value: Any = payload
+    for part in key.split("."):
+        if not isinstance(value, dict):
+            return None
+        value = value.get(part)
+    return value
+
+
 def _satisfies(payload: dict[str, Any], key: str, cond: Any) -> bool:
-    value = payload.get(key)
+    value = _lookup(payload, key)
     if isinstance(value, list):  # array payloads (heading_path) match on any element
         return any(_one(v, cond) for v in value)
     return _one(value, cond)
@@ -208,6 +218,16 @@ class InMemoryVectorStore(VectorStore):
                 hits.append(ScoredPoint(p.id, score, p.payload))
         hits.sort(key=lambda h: (-h.score, h.id))
         return hits[:limit]
+
+    async def set_payload(
+        self, collection: str, payload: dict[str, Any], *, filters: Filters
+    ) -> None:
+        if not filters:
+            raise ValueError("set_payload requires filters")
+        check_filters(filters)
+        for point in self._data.get(collection, {}).values():
+            if _matches(point.payload, filters):
+                point.payload.update(payload)
 
     async def get_vectors(self, collection: str, ids: list[str]) -> dict[str, list[float]]:
         points = self._data.get(collection, {})

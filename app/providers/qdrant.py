@@ -195,6 +195,18 @@ class QdrantStore(VectorStore):
         sparse = {"indices": vector.indices, "values": vector.values}
         return await self._query(collection, SPARSE, sparse, limit, filters, exclude)
 
+    async def set_payload(
+        self, collection: str, payload: dict[str, Any], *, filters: Filters
+    ) -> None:
+        if not filters:
+            raise ValueError("set_payload requires filters")
+        await self._call(
+            "POST",
+            f"/collections/{collection}/points/payload?wait=true",
+            json={"payload": payload, "filter": _filter(filters)},
+            ok_statuses=(404,),  # nothing indexed yet: nothing to update
+        )
+
     async def get_vectors(self, collection: str, ids: list[str]) -> dict[str, list[float]]:
         if not ids:
             return {}

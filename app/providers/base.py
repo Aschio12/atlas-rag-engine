@@ -186,6 +186,13 @@ class VectorStore(ABC):
         behave as in `search`."""
 
     @abstractmethod
+    async def set_payload(
+        self, collection: str, payload: dict[str, Any], *, filters: Filters
+    ) -> None:
+        """Set top-level payload fields on every point matching `filters` (other fields are
+        kept; a field's whole value is replaced). A missing collection is a no-op."""
+
+    @abstractmethod
     async def get_vectors(self, collection: str, ids: list[str]) -> dict[str, list[float]]:
         """The dense vectors of the points with these ids; ids that do not exist are left out
         (so is everything when the collection does not exist)."""
