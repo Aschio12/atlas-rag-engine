@@ -25,7 +25,7 @@ from app.retrieve.options import RetrievalOptions
 from app.retrieve.pipeline import RetrievalPipeline
 from app.retrieve.rerank import RerankUnavailable
 from app.retrieve.transform import Turn
-from app.retrieve.types import Hit, RetrievalTrace
+from app.retrieve.types import ContextResult, Hit, RetrievalTrace
 
 router = APIRouter(tags=["search"])
 
@@ -65,6 +65,7 @@ class HitOut(BaseModel):
     document_id: uuid.UUID
     collection_id: uuid.UUID
     rank: int
+    ordinal: int
     score: float
     text: str
     title: str
@@ -92,12 +93,36 @@ class TraceOut(BaseModel):
     stages: list[StageOut]
 
 
+class BlockOut(BaseModel):
+    label: str
+    text: str
+    document_id: uuid.UUID
+    collection_id: uuid.UUID
+    title: str
+    page: int | None
+    heading_path: list[str]
+    char_start: int
+    char_end: int
+    chunk_ids: list[uuid.UUID]
+    retrieved_chunk_ids: list[uuid.UUID]
+    score: float
+    tokens: int
+    notes: list[str]
+
+
+class ContextOut(BaseModel):
+    blocks: list[BlockOut]
+    tokens: int
+    budget: int
+
+
 class SearchOut(BaseModel):
     query: str
     mode: str
     hits: list[HitOut]
     trace: TraceOut
     warnings: list[str]
+    context: ContextOut | None = None
 
 
 class FieldOut(BaseModel):
@@ -109,6 +134,14 @@ class FieldOut(BaseModel):
 
 def _hit_out(h: Hit) -> HitOut:
     return HitOut(**vars(h))
+
+
+def _context_out(c: ContextResult | None) -> ContextOut | None:
+    if c is None:
+        return None
+    return ContextOut(
+        blocks=[BlockOut(**vars(b)) for b in c.blocks], tokens=c.tokens, budget=c.budget
+    )
 
 
 def _trace_out(t: RetrievalTrace) -> TraceOut:
@@ -140,7 +173,7 @@ async def search(body: SearchRequest, access: ViewerAccess, session: SessionDep,
     the ones named), narrowed by optional metadata filters. Each hit carries its scores and the
     reasons it was chosen; `trace` shows what every stage did."""
     collections = await _collections(session, access.workspace.id, body.collection_ids)
-    pipeline = RetrievalPipeline(session, request.app.state.providers)
+    pipeline = RetrievalPipeline(session, request.app.state.providers, request.app.state.blobs)
     try:
         result = await pipeline.run(
             body.query,
@@ -158,6 +191,7 @@ async def search(body: SearchRequest, access: ViewerAccess, session: SessionDep,
         hits=[_hit_out(h) for h in result.hits],
         trace=_trace_out(result.trace),
         warnings=result.warnings,
+        context=_context_out(result.context),
     )
 
 

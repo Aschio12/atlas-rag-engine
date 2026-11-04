@@ -20,6 +20,7 @@ from app.db.models import Collection
 from app.providers.errors import ProviderError
 from app.providers.registry import Providers
 from app.retrieve.candidates import Candidate, fetch_size, search_dense, search_sparse
+from app.retrieve.context import ContextAssembler
 from app.retrieve.filters import CompiledFilter
 from app.retrieve.fusion import Fused, reciprocal_rank_fusion, weighted_fusion
 from app.retrieve.hits import build_hit, matched_terms
@@ -28,6 +29,7 @@ from app.retrieve.rerank import RerankUnavailable, rerank_hits
 from app.retrieve.resolve import Row, chunk_id_of, load_rows, resolve
 from app.retrieve.transform import Turn, Variant, transform_query
 from app.retrieve.types import Hit, RetrievalResult, RetrievalTrace
+from app.storage import BlobStore
 
 
 @dataclass(frozen=True)
@@ -69,9 +71,10 @@ def make_jobs(primary: str, variants: list[Variant], mode: str) -> list[Job]:
 
 
 class RetrievalPipeline:
-    def __init__(self, session: AsyncSession, providers: Providers):
+    def __init__(self, session: AsyncSession, providers: Providers, blobs: BlobStore | None = None):
         self._session = session
         self._providers = providers
+        self._blobs = blobs  # lets context assembly merge chunks that a blank gap separates
 
     async def run(
         self,
@@ -117,15 +120,26 @@ class RetrievalPipeline:
             jobs, workspace_id, collections, metadata, options, trace
         )
 
-        window = max(options.top_k, options.rerank.candidates) if reranker else options.top_k
-        hits = self._rank(channels, rows, options, trace, window)
+        window = options.top_k
         if reranker is not None:
-            hits = await self._rerank(reranker, primary, hits, trace, warnings)
-        hits = hits[: options.top_k]
-        for rank, hit in enumerate(hits, start=1):
+            window = max(window, options.rerank.candidates)
+        if options.context.enabled:
+            window = max(window, options.context.pool)
+        ranked = self._rank(channels, rows, options, trace, window)
+        if reranker is not None:
+            ranked = await self._rerank(reranker, primary, ranked, trace, warnings)
+        for rank, hit in enumerate(ranked, start=1):
             hit.rank = rank
+        hits = ranked[: options.top_k]
         trace.add("result", time.perf_counter(), returned=len(hits))
-        return RetrievalResult(hits, trace, warnings)
+
+        context = None
+        if options.context.enabled:
+            started = time.perf_counter()
+            assembler = ContextAssembler(self._session, self._providers.vector_store, self._blobs)
+            context, details = await assembler.assemble(ranked, options.context)
+            trace.add("context", started, **details)
+        return RetrievalResult(hits, trace, warnings, context)
 
     # -- stages ------------------------------------------------------------------------------
 

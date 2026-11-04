@@ -40,6 +40,7 @@ def build_hit(
         document_id=doc.id,
         collection_id=doc.collection_id,
         rank=rank,
+        ordinal=chunk.ordinal,
         score=score,
         text=chunk.text,
         title=doc.title,

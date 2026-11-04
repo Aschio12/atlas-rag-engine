@@ -18,6 +18,7 @@ class Hit:
     document_id: uuid.UUID
     collection_id: uuid.UUID
     rank: int
+    ordinal: int  # position of the chunk in its document
     score: float  # the score of the stage that produced the current order
     text: str
     title: str
@@ -53,7 +54,36 @@ class RetrievalTrace:
 
 
 @dataclass
+class ContextBlock:
+    """One passage of the assembled context: a retrieved chunk, or the parent section or
+    neighbouring chunks around it, with overlapping pieces merged into one exact text."""
+
+    label: str  # "S1": how a prompt and an answer refer to it
+    text: str
+    document_id: uuid.UUID
+    collection_id: uuid.UUID
+    title: str
+    page: int | None
+    heading_path: list[str]
+    char_start: int
+    char_end: int
+    chunk_ids: list[uuid.UUID]  # every chunk whose text is inside the block
+    retrieved_chunk_ids: list[uuid.UUID]  # the ones retrieval returned (what to highlight)
+    score: float
+    tokens: int
+    notes: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ContextResult:
+    blocks: list[ContextBlock]
+    tokens: int
+    budget: int
+
+
+@dataclass
 class RetrievalResult:
     hits: list[Hit]
     trace: RetrievalTrace
     warnings: list[str] = field(default_factory=list)  # degraded behaviour the caller should see
+    context: ContextResult | None = None

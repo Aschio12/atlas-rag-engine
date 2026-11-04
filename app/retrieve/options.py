@@ -46,6 +46,25 @@ class RerankOptions(BaseModel):
     )
 
 
+class ContextOptions(BaseModel):
+    """Turn the best passages into the context an answer is written from (Phase 3.6)."""
+
+    enabled: bool = False
+    max_tokens: int = Field(3000, ge=200, le=32_000, description="Budget for the whole context")
+    pool: int = Field(20, ge=1, le=MAX_POOL, description="Best passages considered")
+    parent_expansion: bool = Field(
+        True, description="Give a child chunk its whole parent section (parent-child collections)"
+    )
+    neighbors: int = Field(0, ge=0, le=3, description="Chunks added before and after each passage")
+    dedupe: bool = True
+    dedupe_threshold: float = Field(0.9, ge=0.5, le=1.0, description="Word-shingle similarity")
+    mmr: bool = Field(True, description="Prefer passages that add something new")
+    mmr_lambda: float = Field(0.7, ge=0, le=1, description="1 = pure relevance, 0 = pure diversity")
+    order: Literal["edges", "relevance", "document"] = Field(
+        "edges", description="edges puts the best passages first and last (lost in the middle)"
+    )
+
+
 class RetrievalOptions(BaseModel):
     mode: Mode = "hybrid"
     top_k: int = Field(10, ge=1, le=MAX_TOP_K)
@@ -58,6 +77,7 @@ class RetrievalOptions(BaseModel):
     fusion: FusionOptions = Field(default_factory=FusionOptions)
     rerank: RerankOptions = Field(default_factory=RerankOptions)
     transforms: TransformOptions = Field(default_factory=TransformOptions)
+    context: ContextOptions = Field(default_factory=ContextOptions)
 
     @model_validator(mode="after")
     def _consistent(self) -> RetrievalOptions:
